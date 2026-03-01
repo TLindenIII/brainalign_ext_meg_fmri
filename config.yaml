@@ -1,0 +1,24 @@
+# Configuration for BrainAlign-style pipeline
+
+data:
+  # EEG2 uses its own stimuli directory
+  eeg_dir: "data/things-eeg2"
+  eeg_stimuli_dir: "data/things-eeg2/stimuli"
+
+  # MEG and fMRI point to BIDS derivatives/sourcedata
+  meg_dir: "data/things-meg-ds004212"
+  fmri_dir: "data/things-fmri-ds004192"
+
+  # Directory to store the CLIP features cache
+  clip_cache_dir: "clip_cache"
+
+model:
+  clip_name: "ViT-B/32"
+  brain_encoder: "CBraMod"
+  projection_dim: 512
+  temperature_init: 0.07 # standard CLIP value
+
+training:
+  batch_size: 256
+  learning_rate: 1e-4
+  epochs: 50
