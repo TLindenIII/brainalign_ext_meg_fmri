@@ -208,3 +208,6 @@ __marimo__/
 
 # Datasets
 data/
+
+# Vendored external dependencies (e.g., CBraMod)
+src/vendored/
