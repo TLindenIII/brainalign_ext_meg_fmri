@@ -139,12 +139,12 @@ def main(subject):
     def format_row(method_name, results_arr, mean, std):
         row_str = f"{method_name:<30} "
         for val in results_arr:
-            row_str += f"{val:4.1f} "
-        row_str += f"{mean:5.1f} {std:4.1f}"
+            row_str += f"{val:5.1f} "
+        row_str += f"{mean:6.1f} {std:5.1f}"
         return row_str
         
     print("\nTable 1: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task")
-    header = f"{'Method':<30} " + " ".join([f"S{s:>2}" for s in subjects_to_eval]) + f" {'Ave':>5} {'Std':>4}"
+    header = f"{'Method':<30} " + " ".join([f"S{s:<4}" for s in subjects_to_eval]) + f"{'Ave':>7} {'Std':>6}"
     print(header)
     print(format_row("Our CBraMod (finetuned) + CLIP", e2i_arr, e2i_mean, e2i_std))
     

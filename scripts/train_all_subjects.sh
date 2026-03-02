@@ -32,6 +32,7 @@ do
 done
 
 echo "============================================================"
-echo "All 10 subjects have been trained!"
-echo "You can now run 'python src/evaluate_table.py' to generate the final averaged SOTA matrices."
+echo "All 10 subjects have been trained! Automatically generating the final averaged SOTA matrices..."
 echo "============================================================"
+
+PYTHONPATH=. python src/evaluate_table.py
