@@ -56,23 +56,31 @@ def evaluate_subject(model, test_loader, clip_dict, device):
     # EEG-to-Image similarity: queries are EEG, gallery are Images
     sims_e2i = cosine_similarity(avg_p_brains, test_candidates) # shape: (200, 200)
     top1_e2i = 0
+    top5_e2i = 0
     for i in range(200):
         # The correct match is the element on the diagonal where row i matches col i
         sorted_indices = np.argsort(sims_e2i[i])[::-1]
         if sorted_indices[0] == i:
             top1_e2i += 1
-    e2i_acc = (top1_e2i / 200.0) * 100.0
+        if i in sorted_indices[:5]:
+            top5_e2i += 1
+    e2i_acc_top1 = (top1_e2i / 200.0) * 100.0
+    e2i_acc_top5 = (top5_e2i / 200.0) * 100.0
     
     # Image-to-EEG similarity: queries are Images, gallery are EEG
     sims_i2e = cosine_similarity(test_candidates, avg_p_brains) # shape: (200, 200)
     top1_i2e = 0
+    top5_i2e = 0
     for i in range(200):
         sorted_indices = np.argsort(sims_i2e[i])[::-1]
         if sorted_indices[0] == i:
             top1_i2e += 1
-    i2e_acc = (top1_i2e / 200.0) * 100.0
+        if i in sorted_indices[:5]:
+            top5_i2e += 1
+    i2e_acc_top1 = (top1_i2e / 200.0) * 100.0
+    i2e_acc_top5 = (top5_i2e / 200.0) * 100.0
     
-    return e2i_acc, i2e_acc
+    return e2i_acc_top1, e2i_acc_top5, i2e_acc_top1, i2e_acc_top5
 
 def main(subject):
     config = load_config()
@@ -82,8 +90,10 @@ def main(subject):
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
     clip_dict = np.load(clip_cache_path)
     
-    results_e2i = []
-    results_i2e = []
+    results_e2i_top1 = []
+    results_e2i_top5 = []
+    results_i2e_top1 = []
+    results_i2e_top5 = []
     
     subjects_to_eval = [subject] if subject is not None else range(1, 11)
     
@@ -96,12 +106,14 @@ def main(subject):
     
     print(f"Beginning evaluation across {len(subjects_to_eval)} subjects...")
     for sub in subjects_to_eval:
-        checkpoint_path = f"checkpoints/eeg_brainalign_sub{sub:02d}_best.pt"
+        checkpoint_path = f"checkpoints/eeg/eeg_brainalign_sub{sub:02d}_best.pt"
         
         if not os.path.exists(checkpoint_path):
             print(f"Warning: Checkpoint {checkpoint_path} not found. Skipping subject {sub:02d} and assigning 0.0 accuracy.")
-            results_e2i.append(0.0)
-            results_i2e.append(0.0)
+            results_e2i_top1.append(0.0)
+            results_e2i_top5.append(0.0)
+            results_i2e_top1.append(0.0)
+            results_i2e_top5.append(0.0)
             continue
             
         model = BrainAlignModel(
@@ -123,18 +135,28 @@ def main(subject):
         )
         test_loader = DataLoader(dataset, batch_size=config["training"]["batch_size"], shuffle=False)
             
-        e2i_acc, i2e_acc = evaluate_subject(model, test_loader, clip_dict, device)
-        results_e2i.append(e2i_acc)
-        results_i2e.append(i2e_acc)
+        e2i_acc_top1, e2i_acc_top5, i2e_acc_top1, i2e_acc_top5 = evaluate_subject(model, test_loader, clip_dict, device)
+        results_e2i_top1.append(e2i_acc_top1)
+        results_e2i_top5.append(e2i_acc_top5)
+        results_i2e_top1.append(i2e_acc_top1)
+        results_i2e_top5.append(i2e_acc_top5)
         
-    e2i_arr = np.array(results_e2i)
-    i2e_arr = np.array(results_i2e)
+    e2i_arr_top1 = np.array(results_e2i_top1)
+    e2i_arr_top5 = np.array(results_e2i_top5)
+    i2e_arr_top1 = np.array(results_i2e_top1)
+    i2e_arr_top5 = np.array(results_i2e_top5)
     
-    e2i_mean = e2i_arr.mean()
-    e2i_std = e2i_arr.std(ddof=1) if len(e2i_arr) > 1 else 0.0
+    e2i_mean_top1 = e2i_arr_top1.mean()
+    e2i_std_top1 = e2i_arr_top1.std(ddof=1) if len(e2i_arr_top1) > 1 else 0.0
     
-    i2e_mean = i2e_arr.mean()
-    i2e_std = i2e_arr.std(ddof=1) if len(i2e_arr) > 1 else 0.0
+    e2i_mean_top5 = e2i_arr_top5.mean()
+    e2i_std_top5 = e2i_arr_top5.std(ddof=1) if len(e2i_arr_top5) > 1 else 0.0
+    
+    i2e_mean_top1 = i2e_arr_top1.mean()
+    i2e_std_top1 = i2e_arr_top1.std(ddof=1) if len(i2e_arr_top1) > 1 else 0.0
+    
+    i2e_mean_top5 = i2e_arr_top5.mean()
+    i2e_std_top5 = i2e_arr_top5.std(ddof=1) if len(i2e_arr_top5) > 1 else 0.0
     
     def format_row(method_name, results_arr, mean, std):
         row_str = f"{method_name:<30} "
@@ -143,15 +165,34 @@ def main(subject):
         row_str += f"{mean:6.1f} {std:5.1f}"
         return row_str
         
-    print("\nTable 1: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task")
-    header = f"{'Method':<30} " + " ".join([f"S{s:<4}" for s in subjects_to_eval]) + f"{'Ave':>7} {'Std':>6}"
-    print(header)
-    print(format_row("Our CBraMod (finetuned) + CLIP", e2i_arr, e2i_mean, e2i_std))
+    results_out_dir = Path("results/eeg")
+    results_out_dir.mkdir(parents=True, exist_ok=True)
     
-    print("\nTable 2: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task")
-    print(header)
-    print(format_row("Our CBraMod (finetuned) + CLIP", i2e_arr, i2e_mean, i2e_std))
-
+    out_lines = []
+    
+    out_lines.append("\nTable 1: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task")
+    header = f"{'Method':<30} " + " ".join([f"S{s:<4}" for s in subjects_to_eval]) + f"{'Ave':>7} {'Std':>6}"
+    out_lines.append(header)
+    out_lines.append(format_row("Our CBraMod (finetuned) + CLIP", e2i_arr_top1, e2i_mean_top1, e2i_std_top1))
+    
+    out_lines.append("\nTable 2: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task")
+    out_lines.append(header)
+    out_lines.append(format_row("Our CBraMod (finetuned) + CLIP", i2e_arr_top1, i2e_mean_top1, i2e_std_top1))
+    
+    out_lines.append("\nTable 3: A comparison of different model performances (top-5 accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task")
+    out_lines.append(header)
+    out_lines.append(format_row("Our CBraMod (finetuned) + CLIP", e2i_arr_top5, e2i_mean_top5, e2i_std_top5))
+    
+    out_lines.append("\nTable 4: A comparison of different model performances (top-5 accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task")
+    out_lines.append(header)
+    out_lines.append(format_row("Our CBraMod (finetuned) + CLIP", i2e_arr_top5, i2e_mean_top5, i2e_std_top5))
+    
+    for line in out_lines:
+        print(line)
+        
+    with open(results_out_dir / "evaluation_summary.txt", "w") as f:
+        f.write("\n".join(out_lines))
+        
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--subject", type=int, default=None, help="Evaluate a single subject (e.g., 1). If not provided, loop 1-10.")

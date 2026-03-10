@@ -1,5 +1,7 @@
 # BrainAlign-Style Representation-First Alignment on THINGS (EEG → MEG → fMRI)
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/TLindenIII/brainalign_ext_meg_fmri)
+
 ## Context
 
 This repo implements a **representation-first, contrastive alignment pipeline** that maps brain signals into a **shared CLIP-anchored semantic space** for retrieval and cross-modal evaluation.

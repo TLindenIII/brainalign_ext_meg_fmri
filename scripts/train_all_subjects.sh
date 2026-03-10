@@ -13,8 +13,8 @@ do
     
     # Check if the checkpoint already exists to avoid redundant training
     SUB_ID=$(printf "%02d" $i)
-    if [ -f "checkpoints/eeg_brainalign_sub${SUB_ID}_best.pt" ]; then
-        echo "Checkpoint for Subject $i already exists (eeg_brainalign_sub${SUB_ID}_best.pt). Skipping training..."
+    if [ -f "checkpoints/eeg/eeg_brainalign_sub${SUB_ID}_best.pt" ]; then
+        echo "Checkpoint for Subject $i already exists (checkpoints/eeg/eeg_brainalign_sub${SUB_ID}_best.pt). Skipping training..."
         echo ""
         continue
     fi

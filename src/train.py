@@ -94,8 +94,8 @@ def train(config_path, modality, subject):
     
     epochs = config["training"]["epochs"]
     best_val_top1 = 0.0
-    save_dir = Path("checkpoints")
-    save_dir.mkdir(exist_ok=True)
+    save_dir = Path("checkpoints") / modality
+    save_dir.mkdir(parents=True, exist_ok=True)
     
     print("Starting training...")
     for epoch in range(epochs):

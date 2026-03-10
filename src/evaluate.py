@@ -112,8 +112,19 @@ def main(modality, checkpoint_path):
     top1, top5 = evaluate(model, test_loader, clip_dict, device)
     
     print(f"\n--- Evaluation Results ({modality.upper()}) ---")
-    print(f"Top-1 Retrieval: {top1:.2f}%")
-    print(f"Top-5 Retrieval: {top5:.2f}%")
+    out_lines = [
+        f"--- Evaluation Results ({modality.upper()}) ---",
+        f"Checkpoint: {checkpoint_path}",
+        f"Top-1 Retrieval: {top1:.2f}%",
+        f"Top-5 Retrieval: {top5:.2f}%"
+    ]
+    for line in out_lines:
+        print(line)
+        
+    results_dir = Path("results") / modality
+    results_dir.mkdir(parents=True, exist_ok=True)
+    with open(results_dir / "evaluation_results.txt", "w") as f:
+        f.write("\n".join(out_lines))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
