@@ -209,5 +209,5 @@ __marimo__/
 # Datasets
 data/
 
-# Vendored external dependencies (e.g., CBraMod)
-src/vendored/
+# Un-ignore the globally ignored cache directory
+!clip_cache/
