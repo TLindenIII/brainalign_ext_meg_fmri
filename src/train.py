@@ -36,19 +36,21 @@ def get_dataloader(config, modality, split, subject=1):
     elif modality == "meg":
         dataset = THINGSMEGDataset(
             meg_dir=config["data"]["meg_dir"],
-            clip_cache_path=clip_cache_path
+            clip_cache_path=clip_cache_path,
+            split=split
         )
     elif modality == "fmri":
         dataset = THINGSfMRIDataset(
             fmri_dir=config["data"]["fmri_dir"],
-            clip_cache_path=clip_cache_path
+            clip_cache_path=clip_cache_path,
+            split=split
         )
     else:
         raise ValueError(f"Unknown modality: {modality}")
         
     return DataLoader(dataset, batch_size=batch_size, shuffle=(split=="train"))
 
-def train(config_path, modality, subject):
+def train(config_path, modality, subject, epochs_override=None, resume=False):
     config = load_config(config_path)
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device} for modality {modality.upper()}, subject {subject:02d}")
@@ -56,10 +58,7 @@ def train(config_path, modality, subject):
     # Setup data
     print("Initializing dataloader...")
     train_loader = get_dataloader(config, modality, split="train", subject=subject)
-    if modality == "eeg":
-        test_loader = get_dataloader(config, modality, split="test", subject=subject)
-    else:
-        test_loader = None
+    val_loader = get_dataloader(config, modality, split="val", subject=subject)
         
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
     clip_dict = np.load(clip_cache_path)
@@ -92,13 +91,41 @@ def train(config_path, modality, subject):
         lr=float(config["training"]["learning_rate"])
     )
     
-    epochs = config["training"]["epochs"]
+    epochs = config["training"]["epochs"][modality] if epochs_override is None else epochs_override
     best_val_top1 = 0.0
     save_dir = Path("checkpoints") / modality
     save_dir.mkdir(parents=True, exist_ok=True)
+    best_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_best.pt"
+    latest_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_latest.pt"
     
-    print("Starting training...")
-    for epoch in range(epochs):
+    start_epoch = 0
+    if resume:
+        target_ckpt = None
+        if latest_ckpt_path.exists():
+            target_ckpt = latest_ckpt_path
+            print(f"Resume flag detected. Found 'latest' checkpoint: {target_ckpt}")
+        elif best_ckpt_path.exists():
+            target_ckpt = best_ckpt_path
+            print(f"Resume flag detected. Found 'best' checkpoint: {target_ckpt}")
+            
+        if target_ckpt:
+            checkpoint = torch.load(target_ckpt, map_location=device)
+            
+            # Check if it's the new comprehensive dict format or legacy raw weights
+            if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+                model.load_state_dict(checkpoint["model_state_dict"])
+                optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+                start_epoch = checkpoint["epoch"] + 1
+                best_val_top1 = checkpoint["best_val_top1"]
+                print(f"Restored comprehensive checkpoint (Epoch {start_epoch-1}, Best Val: {best_val_top1:.2f}%)")
+            else:
+                model.load_state_dict(checkpoint)
+                print("Loaded legacy weights-only checkpoint. Starting from Epoch 1.")
+        else:
+            print("Resume flag detected but no checkpoints found. Starting fresh.")
+            
+    print(f"Starting training loop from epoch {start_epoch+1} to {epochs}...")
+    for epoch in range(start_epoch, epochs):
         model.train()
         total_loss = 0.0
         
@@ -130,19 +157,32 @@ def train(config_path, modality, subject):
         avg_loss = total_loss / len(train_loader)
         print(f"Epoch {epoch+1} finished. Avg Loss: {avg_loss:.4f}")
         
-        if test_loader is not None and ((epoch + 1) % 5 == 0 or epoch == 0):
-            top1, top5 = evaluate(model, test_loader, clip_dict, device)
+        if val_loader is not None and ((epoch + 1) % 5 == 0 or epoch == 0):
+            top1, top5 = evaluate(model, val_loader, clip_dict, device)
             print(f"--> Val Epoch {epoch+1} | Top-1: {top1:.2f}% | Top-5: {top5:.2f}%")
             
             # Only save the best checkpoint
             if top1 > best_val_top1:
                 best_val_top1 = top1
                 best_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_best.pt"
-                torch.save(model.state_dict(), best_ckpt_path)
-                print(f"    New best validation accuracy! Saved to {best_ckpt_path}")
+                torch.save({
+                    'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'best_val_top1': best_val_top1,
+                }, best_ckpt_path)
+                print(f"    New best validation accuracy! Saved comprehensive statemap to {best_ckpt_path}")
             
             # Rebalance model to training mode
             model.train()
+            
+        # Always save the latest state dictionary at the very end of the epoch loop
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'best_val_top1': best_val_top1,
+        }, latest_ckpt_path)
         
     print(f"Training completed. Best evaluation top-1 metric achieved: {best_val_top1:.2f}%")
 
@@ -151,6 +191,8 @@ if __name__ == "__main__":
     parser.add_argument("--config", type=str, default="config.yaml", help="Path to config file")
     parser.add_argument("--modality", type=str, required=True, choices=["eeg", "meg", "fmri"], help="Data modality to train on")
     parser.add_argument("--subject", type=int, default=1, help="Subject ID to train on (e.g., 1 for sub-01)")
+    parser.add_argument("--epochs", type=int, default=None, help="Override the number of epochs (default: config.yaml value)")
+    parser.add_argument("--resume", action="store_true", help="Resume from the best checkpoint if it exists")
     args = parser.parse_args()
     
-    train(args.config, args.modality, args.subject)
+    train(args.config, args.modality, args.subject, args.epochs, args.resume)

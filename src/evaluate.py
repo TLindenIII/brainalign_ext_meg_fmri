@@ -22,7 +22,10 @@ def evaluate(model, test_loader, clip_dict, device):
     model.eval()
     
     # 1. Prepare candidates
-    unique_test_ids = list(set([Path(f).stem for f in test_loader.dataset.files]))
+    if hasattr(test_loader.dataset, 'files'):
+        unique_test_ids = list(set([Path(f).stem for f in test_loader.dataset.files]))
+    else:
+        unique_test_ids = list(set([t["image_id"] for t in test_loader.dataset.trials]))
     
     test_candidates = []
     for cid in unique_test_ids:
@@ -82,9 +85,9 @@ def main(modality, checkpoint_path):
     if modality == "eeg":
         dataset = THINGSEEG2Dataset(eeg_dir=config["data"]["eeg_dir"], clip_cache_path=clip_cache_path, split="test")
     elif modality == "meg":
-        dataset = THINGSMEGDataset(meg_dir=config["data"]["meg_dir"], clip_cache_path=clip_cache_path)
+        dataset = THINGSMEGDataset(meg_dir=config["data"]["meg_dir"], clip_cache_path=clip_cache_path, split="test")
     elif modality == "fmri":
-        dataset = THINGSfMRIDataset(fmri_dir=config["data"]["fmri_dir"], clip_cache_path=clip_cache_path)
+        dataset = THINGSfMRIDataset(fmri_dir=config["data"]["fmri_dir"], clip_cache_path=clip_cache_path, split="test")
         
     test_loader = DataLoader(dataset, batch_size=config["training"]["batch_size"], shuffle=False)
     
@@ -106,8 +109,12 @@ def main(modality, checkpoint_path):
     ).to(device)
     
     print(f"Loading checkpoint: {checkpoint_path}")
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
-    
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+        model.load_state_dict(checkpoint["model_state_dict"])
+    else:
+        model.load_state_dict(checkpoint)
+        
     print("Beginning retrieval evaluation...")
     top1, top5 = evaluate(model, test_loader, clip_dict, device)
     

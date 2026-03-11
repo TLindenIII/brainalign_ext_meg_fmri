@@ -15,6 +15,18 @@ We will:
 
 ---
 
+## Context from the Original BrainAlign Paper
+
+The original [BrainAlign paper] introduced a representation-first approach to brain decoding, hypothesizing that **fine-tuning** a pre-trained foundation model (like CBraMod) as an inductive bias dramatically outperforms treating it as a frozen feature extractor.
+
+Their primary findings on the THINGS-EEG2 dataset:
+
+- **Best Backbone:** Their configuration pairing the fine-tuned CBraMod with a **CORNet-S** image encoder achieved the highest cross-subject average Top-1 accuracy: **14.2%** (EEG→Image) and **23.2%** (Image→EEG). They hypothesized that CORNet-S better mimics the recurrent connections of the primate ventral stream.
+- **SOTA Comparisons:** Their architecture significantly outperformed existing frameworks like BraVL (5.8%), the base NICE framework (13.8%), and achieved parity with NICE-GA (15.6%) but converging 70% faster (within 60 epochs).
+- **Our Deviation:** While BrainAlign used ResNet50, CORNet-S, and CLIP, we exclusively anchor our shared semantic space to **CLIP**. This serves our specific extension goal: a robust, text-aligned multimodal embedding space to bridge MEG and fMRI signals.
+
+---
+
 ## Goal
 
 Test whether a **CBraMod + symmetric contrastive alignment** pipeline generalizes:
@@ -39,7 +51,7 @@ Test whether a **CBraMod + symmetric contrastive alignment** pipeline generalize
 
 - **THINGS-EEG2 ([OSF](https://osf.io/3jk45/overview))**
   Download at minimum:
-  - **Preprocessed EEG data**
+  - **Preprocessed EEG data** (Note: this specific release provides 17 occipital/parietal channels at 100Hz, trimmed from the raw 63-channel 200Hz recording)
   - **Image set**
 
   Optional:
@@ -144,7 +156,7 @@ On shared test images:
 Every dataset loader should yield:
 
 - `x`: brain data tensor
-  - EEG/MEG: `C × T`
+  - EEG/MEG: `C × T` (e.g. EEG is 17 × 100)
   - fMRI: `V` (voxels/ROI) or `R` features
 - `image_id`: string or integer unique key for the stimulus
 - `y_clip`: CLIP embedding `R^D` for `image_id`
@@ -154,6 +166,14 @@ Every dataset loader should yield:
 
 - Train on single trials where possible.
 - Evaluate on **per-image aggregated embeddings** (average across trials, optionally across subjects).
+
+### Strict 3-Way Image Split
+
+To prevent data leakage, we enforce a strict **80/10/10 (Train/Val/Test)** split across all modalities, purely isolated by `image_id`:
+
+- **80% Train**: Used exclusively for computing InfoNCE gradients.
+- **10% Val**: Used to evaluate retrieval every 5 epochs and save the `best_ckpt`.
+- **10% Test**: Vaulted candidate set used exclusively for the final retrieval and H3 Modality Conversion cross-evaluations.
 
 ---
 
