@@ -9,6 +9,7 @@ from pathlib import Path
 
 # Local imports
 from src.models.contrastive_model import BrainAlignModel
+from src.models.fmri_model import fMRIAlignModel
 from src.models.loss import clip_loss
 from src.data.eeg_loader import THINGSEEG2Dataset
 from src.data.meg_loader import THINGSMEGDataset
@@ -43,11 +44,13 @@ def get_dataloader(config, modality, split, subject=1):
         dataset = THINGSfMRIDataset(
             fmri_dir=config["data"]["fmri_dir"],
             clip_cache_path=clip_cache_path,
-            split=split
+            split=split,
+            subject=subject
         )
     else:
         raise ValueError(f"Unknown modality: {modality}")
         
+    batch_size = config["training"]["batch_size"][modality]
     return DataLoader(dataset, batch_size=batch_size, shuffle=(split=="train"))
 
 def train(config_path, modality, subject, epochs_override=None, resume=False):
@@ -71,28 +74,46 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
     if len(in_shape) == 2:
         in_channels, seq_len = in_shape
     elif len(in_shape) == 1:
-        # e.g., fMRI voxels. Mocking channels=1
+        # e.g., fMRI voxels — a flat 1D vector
         in_channels = 1
         seq_len = in_shape[0]
         
-    # Setup model
-    model = BrainAlignModel(
-        in_channels=in_channels,
-        seq_len=seq_len,
-        brain_embed_dim=config["model"]["projection_dim"],
-        clip_dim=512,
-        tau_init=config["model"]["temperature_init"]
-    ).to(device)
+    # Setup model — use dedicated fMRI model for voxel data, CBraMod for time series
+    if modality == "fmri":
+        n_voxels = in_shape[0]
+        model = fMRIAlignModel(
+            n_voxels=n_voxels,
+            clip_dim=512,
+            tau_init=config["model"]["temperature_init"]
+        ).to(device)
+        print(f"Using fMRIAlignModel: {n_voxels} voxels → 512-dim CLIP space")
+    else:
+        model = BrainAlignModel(
+            in_channels=in_channels,
+            seq_len=seq_len,
+            brain_embed_dim=config["model"]["projection_dim"],
+            clip_dim=512,
+            tau_init=config["model"]["temperature_init"]
+        ).to(device)
     
     print("Fine-tuning the entire model end-to-end (including the pretrained CBraMod backbone).")
-    
-    optimizer = torch.optim.Adam(
-        model.parameters(), 
-        lr=float(config["training"]["learning_rate"])
-    )
+    lr = float(config["training"]["learning_rate"])
+    if modality == "fmri":
+        # fMRI training hyperparameters from the BrainAlign paper
+        optimizer = torch.optim.AdamW(
+            model.parameters(), 
+            lr=lr,
+            weight_decay=1e-3
+        )
+        print(f"Using AdamW optimizer with lr={lr:.1e}, weight_decay=1e-3")
+    else:
+        optimizer = torch.optim.Adam(
+            model.parameters(), 
+            lr=lr
+        )
     
     epochs = config["training"]["epochs"][modality] if epochs_override is None else epochs_override
-    best_val_top1 = 0.0
+    best_val_metric = 0.0
     save_dir = Path("checkpoints") / modality
     save_dir.mkdir(parents=True, exist_ok=True)
     best_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_best.pt"
@@ -116,8 +137,8 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
                 model.load_state_dict(checkpoint["model_state_dict"])
                 optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
                 start_epoch = checkpoint["epoch"] + 1
-                best_val_top1 = checkpoint["best_val_top1"]
-                print(f"Restored comprehensive checkpoint (Epoch {start_epoch-1}, Best Val: {best_val_top1:.2f}%)")
+                best_val_metric = checkpoint.get("best_val_metric", checkpoint.get("best_val_top1", 0.0))
+                print(f"Restored comprehensive checkpoint (Epoch {start_epoch-1}, Best Val: {best_val_metric:.2f}%)")
             else:
                 model.load_state_dict(checkpoint)
                 print("Loaded legacy weights-only checkpoint. Starting from Epoch 1.")
@@ -158,20 +179,26 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
         print(f"Epoch {epoch+1} finished. Avg Loss: {avg_loss:.4f}")
         
         if val_loader is not None and ((epoch + 1) % 5 == 0 or epoch == 0):
-            top1, top5 = evaluate(model, val_loader, clip_dict, device)
-            print(f"--> Val Epoch {epoch+1} | Top-1: {top1:.2f}% | Top-5: {top5:.2f}%")
+            metrics = evaluate(model, val_loader, clip_dict, device)
+            top1 = metrics['top1']
+            top5 = metrics['top5']
+            two_way = metrics['two_way']
+            print(f"--> Val Epoch {epoch+1} | Top-1: {top1:.2f}% | Top-5: {top5:.2f}% | 2-way: {two_way:.2f}%")
+            
+            # Use 2-way accuracy for fMRI, Top-1 for others as the primary metric
+            current_metric = two_way if modality == "fmri" else top1
             
             # Only save the best checkpoint
-            if top1 > best_val_top1:
-                best_val_top1 = top1
+            if current_metric > best_val_metric:
+                best_val_metric = current_metric
                 best_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_best.pt"
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'best_val_top1': best_val_top1,
+                    'best_val_metric': best_val_metric,
                 }, best_ckpt_path)
-                print(f"    New best validation accuracy! Saved comprehensive statemap to {best_ckpt_path}")
+                print(f"    New best validation metric ({current_metric:.2f}%)! Saved comprehensive statemap to {best_ckpt_path}")
             
             # Rebalance model to training mode
             model.train()
@@ -181,10 +208,10 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
             'epoch': epoch,
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'best_val_top1': best_val_top1,
+            'best_val_metric': best_val_metric,
         }, latest_ckpt_path)
         
-    print(f"Training completed. Best evaluation top-1 metric achieved: {best_val_top1:.2f}%")
+    print(f"Training completed. Best evaluation metric achieved: {best_val_metric:.2f}%")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train BrainAlign Contrastive Logic")

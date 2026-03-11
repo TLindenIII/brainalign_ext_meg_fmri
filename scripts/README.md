@@ -68,3 +68,9 @@ Run this script from the **root directory** of the project:
 ```bash
 nohup ./scripts/train_all_subjects.sh --modality fmri --resume &> full_train_out.log &
 ```
+
+**Monitor the background training logs:**
+
+```bash
+tail -f full_train_out.log
+```

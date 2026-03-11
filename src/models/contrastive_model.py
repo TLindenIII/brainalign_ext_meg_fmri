@@ -25,6 +25,10 @@ class BrainAlignModel(nn.Module):
     def __init__(self, in_channels=63, seq_len=100, brain_embed_dim=512, clip_dim=512, tau_init=0.07):
         super().__init__()
         
+        # Spatial channel alignment: mapping arbitrary channels to 63 (expected by pretrained CBraMod)
+        self.in_channels = in_channels
+        self.spatial_mapping = nn.Conv1d(in_channels, 63, kernel_size=1) if in_channels != 63 else None
+        
         # NOTE: 
         # The THINGS-EEG2 dataset has a sequence length of 100 per trial (100ms at 1000Hz).
         # CBraMod's patch encoder mathematically expects inputs structured into patches.
@@ -71,8 +75,12 @@ class BrainAlignModel(nn.Module):
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / tau_init))
         
     def forward(self, x_brain):
-        # The input x_brain from THINGSEEG2Dataset is (B, Channels, Time) -> (B, 63, 100)
+        # The input x_brain from datasets like THINGSEEG2Dataset is (B, Channels, Time) -> (B, 63, 100)
         
+        # 0. Spatial mapping if input channels don't match 63
+        if self.spatial_mapping is not None:
+            x_brain = self.spatial_mapping(x_brain)
+
         # 1. Resample Time axis to exactly 200 to satisfy CBraMod's patch requirements
         if x_brain.size(-1) != self.patch_size:
             x_brain = F.interpolate(x_brain, size=self.patch_size, mode='linear', align_corners=False)

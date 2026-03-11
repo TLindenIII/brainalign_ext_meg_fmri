@@ -19,9 +19,12 @@ model:
   temperature_init: 0.07 # standard CLIP value
 
 training:
-  batch_size: 32
+  batch_size:
+    eeg: 32
+    meg: 32
+    fmri: 256
   learning_rate: 3e-4
   epochs:
     eeg: 60
     meg: 60
-    fmri: 500
+    fmri: 60

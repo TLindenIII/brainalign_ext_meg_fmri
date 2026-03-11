@@ -1,0 +1,679 @@
+Towards Neural Foundation Models for Vision: Aligning EEG,
+MEG, and fMRI Representations for Decoding, Encoding, and
+Modality Conversion
+Matteo Ferrantea, Tommaso Boccatoa, Grigorii Rashkova, Nicola Toschia,b
+aUniversity of Rome, Tor Vergata, Department of Biomedicine and Prevention, Rome, Italy
+bA.A. Martinos Center for Biomedical Imaging, Harvard Medical School/MGH, , Boston, MA, US
+Abstract
+This paper presents a novel approach towards creating a foundational model for aligning
+neural data and visual stimuli across multimodal representationsof brain activity by leverag-
+ing contrastive learning. We used electroencephalography (EEG), magnetoencephalography
+(MEG), and functional magnetic resonance imaging (fMRI) data. Our framework’s capa-
+bilities are demonstrated through three key experiments: decoding visual information from
+neural data, encoding images into neural representations, and converting between neural
+modalities.
+The results highlight the model’s ability to accurately capture semantic in-
+formation across different brain imaging techniques, illustrating its potential in decoding,
+encoding, and modality conversion tasks.
+Keywords:
+brain decoding, brain encoding, neural modality conversion, vision,
+neuroscience, representation alignment
+1. Introduction
+The non-invasive measurement of neural
+activity is crucial to understanding the hu-
+man brain.
+The advent of artificial in-
+telligence has propelled the field of neuro-
+science into using novel paradigms, including
+a wide array of encoding and decoding mod-
+els.
+These models have shown remarkable
+proficiency in interpreting various sensory in-
+puts, encompassing vision, auditory process-
+ing, and motor imagery, among others. Key
+to this endeavor are non-invasive measure-
+ments of neural activity such as electroen-
+cephalography (EEG), magnetoencephalog-
+raphy (MEG), and functional magnetic reso-
+nance imaging (fMRI). Each of these modal-
+ities offers a unique window into brain activ-
+ity, capturing complementary aspects of its
+response to external stimuli and providing
+insights into the perceptual and representa-
+Preprint submitted to Journal
+November 18, 2024
+arXiv:2411.09723v1  [cs.CV]  14 Nov 2024
+tional processes within.
+In this context, our study introduces a step
+forward in the realm of neural foundation
+models for vision. We aim to harmonize dis-
+parate modalities drawn from diverse EEG,
+MEG, and fMRI datasets acquired during a
+vision task, creating a unified representation
+that transcends the limitations of individ-
+ual modalities. Our approach leverages the
+power of contrastive learning to align rep-
+resentations across these non-invasive mea-
+surements of neural correlates and is an-
+chored in the image representations provided
+by the CLIP (Contrastive Language-Image
+Pretraining) model [1] as depicted in Fig 1.
+We assess the capabilities of our frame-
+work in performing an array of tasks through
+information retrieval, as depicted in Fig 2.
+We demonstrate the model’s capability in:
+a) decoding, wherein it can discern and re-
+trieve images corresponding to neural activ-
+ity recorded during experiments; b) encod-
+ing, where it exhibits its potential to predict
+neural activity patterns from visual stimuli;
+c) modality conversion, demonstrating the
+model’s ability to translate semantic content
+across different neural measurement modali-
+ties.
+This approach not only bridges the gap be-
+tween neural activity and visual perception
+but also paves the way for a deeper under-
+standing of how the brain processes and in-
+ternalizes the visual world. Our work stands
+at the intersection of neuroscience and artifi-
+cial intelligence, offering a novel lens through
+which we can view and interpret the com-
+plex narrative of neural activity. It represents
+a step toward the development of a founda-
+tion model for the neuroscience of vision, pro-
+viding a framework for exploring and under-
+standing the ways in which our brains engage
+with and make sense of the visual stimuli that
+permeate our environment.
+1.1. Related Work
+Encoding and decoding in vision neuro-
+science have evolved from classical methods
+to advanced neural network-based models.
+fMRI has emerged as a promising tool to
+extract information with deep learning, con-
+necting biological hypotheses and computa-
+tional models.
+Classical encoding predicts
+brain activity from stimuli, while decoding
+reconstructs stimuli from brain activity, and
+it has been shown that both tasks can ben-
+efit from a combined approach [2]. Several
+models have been used for a wide variety of
+encoding and decoding approaches [3] to ana-
+lyze fMRI time series obtained in conjunction
+with visual stimuli, aiming to reconstruct the
+images linked to observed fMRI patterns or
+brain activity.
+Approaches like VAE-GAN
+have been applied to map fMRI activity to
+latent representations of human faces using
+linear models [4]. Additionally, sparse linear
+regression has been able to predict CNN fea-
+tures for natural images from fMRI data [5].
+Recently, diffusion models, noted for their ex-
+cellent image generation abilities, have be-
+come integral to decoding, often employing
+semantic techniques and multi-step decoding
+processes [6, 7, 8, 9, 10].
+In general, recent advances leverage deep
+neural networks and large datasets to model
+complex visual and language representations,
+enhancing the accuracy of both encoding
+2
+Figure 1: Schematic representation of our proposed model, illustrating the alignment of various neural
+datasets from different modalities into a unified representation space utilizing a frozen CLIP Image encoder.
+and decoding models [11, 12, 13, 14, 15, 16,
+17, 18].
+The Algonauts challenge and sub-
+sequent studies emphasize the effectiveness
+of both pretrained multimodal transformers
+and tailored models for specific brain regions
+[19, 20, 21, 22, 23].
+Tools like MindEye,
+which maps brain activity to multimodal la-
+tent spaces for precise image retrieval and re-
+construction using a contrastive method [24],
+and DREAM, which replicates image recon-
+struction from fMRI data, emulating the hu-
+man visual system [25], are also noteworthy.
+Advancements in high-temporal resolution
+modalities have significantly contributed to
+the progress in encoding and decoding re-
+search within neuroscience. Previous efforts
+have leveraged linear models for tasks such
+as image classification from brain activity,
+prediction of brain activity based on im-
+age representations, and inter-modal compar-
+ison using representational similarity analy-
+sis [26, 27].
+Progressing beyond linear ap-
+proaches, deep neural networks have been
+employed to classify diverse data types, in-
+cluding speech, mental load, and images,
+from EEG signals ([16, 28]).
+EEG, MEG,
+and fMRI are important tools in non-invasive
+brain research, each characterized by distinct
+advantages and limitations.
+EEG provides
+the highest temporal resolution, enabling pre-
+cise temporal tracking of the brain’s electri-
+cal activity and the observation of rapid neu-
+ral dynamics. However, its spatial resolution
+is limited, posing challenges to accurately lo-
+calizing neural activity.
+MEG, while offer-
+ing temporal resolution comparable to EEG,
+provides slightly better spatial resolution by
+measuring the magnetic fields generated by
+neuronal currents.
+Nonetheless, the higher
+costs associated with MEG as well as its lower
+accessibility limit its widespread use. In con-
+trast, fMRI offers superior spatial resolution,
+allowing for detailed mapping of brain activ-
+ity through blood flow changes, albeit with a
+temporal resolution inferior to that of EEG
+and MEG, whcih restricts its ability to cap-
+3
+ture quick neural changes.
+Our model extends these ideas by using
+the principles of contrastive learning, a tech-
+nique that has yielded promising outcomes
+in recent fMRI [24] and MEG decoding in-
+vestigations [16]. These studies concentrate
+on decoding within a single modality, em-
+ploying contrastive learning for data retrieval
+only and in conjunction with other generative
+methods for stimulus reconstruction.
+Con-
+trastive learning differentiates between analo-
+gous (positive) and non-analogous (negative)
+data pairs, facilitating the discernment and
+alignment of semantically congruent repre-
+sentations.
+In our approach, this method-
+ology is applied not solely to decoding but
+also to encoding.
+Through the application
+of contrastive learning, our model establishes
+a bidirectional linkage between the visual
+and neural domains.
+Moreover, we intro-
+duce the concept of neural modality con-
+version, enabling the translation of semantic
+content from one neural measurement modal-
+ity, such as EEG, into another, such as fMRI
+or MEG. This innovation opens new path-
+ways for comprehensive neural analysis, fos-
+tering a more integrated understanding of
+brain functionality by capitalizing on the syn-
+ergistic strengths of each modality. The pri-
+mary contribution of our work is the devel-
+opment of a unified framework adept at man-
+aging decoding, encoding, and neural modal-
+ity conversion, representing a significant ad-
+vancement beyond existing models that are
+limited to a single task and modality.
+By
+aligning EEG, MEG, and fMRI data through
+contrastive learning, our model surmounts
+the inherent limitations of these modalities,
+offering a versatile infrastructure for the in-
+terpretation of neural signals.
+2. Materials and Methods
+Our goal is to make a step towards a shared
+representation of neural data, i.e., a sort
+of ”foundation model of neural representa-
+tion of vision”.
+To achieve this, we lever-
+aged a powerful and well-established pre-
+trained model for obtaining image represen-
+tations—the CLIP Image encoder.
+We fo-
+cused on vision processing, selecting a set
+of human vision datasets where neural activ-
+ity is measured with different techniques like
+EEG, MEG, and fMRI.
+2.1. Data
+EEG: The EEG data for this study were
+sourced from the ImageNetEEG dataset [29],
+whcih involves six participants and 40 Im-
+ageNet categories [30], totaling 2,000 im-
+ages recorded at 1000 Hz.
+The recording
+protocol involved multiple sessions and se-
+quences, resulting in 11,466 EEG sequences
+after quality filtering. Preprocessing included
+notch and band-pass filtering, normaliza-
+tion, and segmentation into 40 ms windows
+for time-frequency decomposition, producing
+EEG spectrogram images for model training.
+To avoid overestimated performances high-
+lighted in [31], a conservative data splitting
+approach was adopted as described in [28],
+ensuring more accurate performance assess-
+ments.
+MEG: in this case, our methodology was
+evaluated using the ”THINGS-MEG” dataset
+4
+Figure 2: The top panel illustrates the ’Decoding’ experiment, where neural data is processed to ’decode’ and
+retrieve visually related images from a dataset. The middle panel depicts the ’Encoding’ experiment, where
+an image is used to predict and retrieve neural data that could be associated with the visual perception of
+that image. The bottom panel shows the ’Modality Conversion’ experiment, demonstrating the translation
+of neural data from one modality, such as EEG, into another, such as fMRI, aiming to find semantically
+similar brain activity across modalities.
+[32].
+This dataset involved four partici-
+pants (two female and two male, average age
+23.25 years) who participated in 12 MEG
+sessions. During these sessions, participants
+were shown 22,448 distinct images from the
+THINGS database [33] spanning 720 differ-
+ent categories. Out of this extensive collec-
+tion, a smaller group of 200 images (each
+from a unique category) was repeatedly pre-
+sented to the subjects. Each image was dis-
+played for 500 milliseconds, followed by a
+variable fixation period ranging from 800 to
+1200 milliseconds. To enhance our retrieval
+set and demonstrate our method’s robust-
+ness, we also incorporated an additional 3,659
+images from the THINGS dataset that were
+not shown to the participants. For MEG data
+preprocessing, the initial step involved down-
+sampling the raw data from the 272 MEG
+radial gradiometer channels from 1,200 Hz to
+120 Hz, followed by centering and standard-
+ization. The MEG data was then segmented
+into epochs extending from 500 ms before to
+1000 ms after the onset of each stimulus. The
+5
+final preprocessing step involved baseline cor-
+rection, achieved by deducting the average
+signal value, recorded from the beginning of
+each epoch to the stimulus onset, for every
+channel.
+fMRI: Here we used the Natural Scenes
+Dataset (NSD) [34].
+This extensive fMRI
+resource includes data from eight individu-
+als who were shown images from the COCO
+dataset. Our focus was on four of these sub-
+jects (consistent with subjects used in compa-
+rable decoding studies), resulting in a dataset
+comprising 8,859 images and 24,980 fMRI tri-
+als for training, and 982 images and 2,770
+fMRI trials for testing per participant. To en-
+hance the signal-to-noise ratio, images shown
+up to three times had their trials averaged.
+The spatial dimensionality of the fMRI data,
+recorded at a resolution of 1.8mm, was re-
+duced to approximately 15,000 voxels. This
+reduction was achieved by applying the NS-
+DGeneral ROI mask, which encompasses sev-
+eral visual areas.
+Selecting this ROI was
+crucial for improving the signal-to-noise ra-
+tio and reducing the complexity of the data,
+allowing for a more focused analysis of both
+low-level and high-level visual features. Tem-
+porally, dimensionality reduction was accom-
+plished by using precalculated coefficients
+(commonly known as ”betas”) from a Gen-
+eral Linear Model (GLM) with a fitted Hemo-
+dynamic Response Function (HRF), as de-
+tailed in the NSD paper [34], and further de-
+noised as described therein.
+2.2. Neural Vision Alignment
+In this section, we focus on aligning the
+neural representations of different modalities
+with image representations derived from the
+CLIP model, specifically aiming to approxi-
+mate the CLS (Classification) embeddings of
+images using the pretrained CLIP Image en-
+coder, denoted as h.
+For each neural modality, we designed a
+distinct neural module, represented as fn.
+This module is essentially a composite func-
+tion, fn = gn ◦an, consisting of two primary
+components. The first component, an, is an
+alignment layer tasked with harmonizing the
+neural data from various subjects into a uni-
+fied representation space. Once aligned, these
+representations are processed by gn, a shared
+network that further refines them to closely
+match the visual representations produced by
+the image encoder.
+To illustrate, consider a subject s who ob-
+serves an image img while their neural activ-
+ity n is being recorded. We generate a repre-
+sentation zi = f(n, s) = g(a(n, s)) and, con-
+currently, we derive the corresponding image
+representation zj through the image encoder:
+zj = h(img).
+Following their generation, these represen-
+tations are normalized, and the contrastive
+CLIP loss is calculated, forming the basis of
+our training regimen. The neural networks
+for MEG and EEG data are structured as
+convolutional neural networks (CNNs) result-
+ing in an architecture capable of processing
+both spatial and temporal patterns in the
+data.
+In contrast, the network for fMRI
+data is configured as a Multilayer Percep-
+tron (MLP), suited for handling the high-
+dimensional and spatially complex nature of
+fMRI data.
+All networks were implemented using the
+6
+Figure 3: Comparative Results of Multimodal Neural Decoding. The figure shows the original visual stimuli
+and the images retrieved using decoding modules for fMRI, EEG, and MEG data. Each block corresponds
+to a different modality, illustrating the model’s ability to identify and retrieve images that closely resemble
+or are semantically related to the original stimulus.
+PyTorch framework and trained using the
+AdamW optimizer. The training parameters
+were a learning rate of 3 × 10−4, weight de-
+cay set at 1 × 10−3, and a batch size of 256.
+The training process spanned over 30 epochs,
+ensuring adequate learning while preventing
+overfitting, leaving room for performance im-
+provement through hyperparameter and neu-
+ral architecture search in future works.
+The contrastive loss function in our model
+aligns the representations of different modal-
+ities with the CLIP model’s image represen-
+tations. Given two normalized representation
+vectors zi and zj, the function proceeds as fol-
+lows: First, both vectors are normalized us-
+ing the L2 norm to ensure they lie on a unit
+hypersphere zi =
+zi
+∥zi∥2 and zj =
+zj
+∥zj∥2.
+Then, the similarities (logits) are com-
+puted by taking the dot product of zi and
+the transpose of zj, scaled by a temperature
+parameter τ, so logits =
+zizT
+j
+τ .
+Targets are defined as a sequence of indices,
+representing the matching pairs in the batch:
+targets = [0, 1, 2, . . . , N −1] (where N is the
+batch size), then transformed into one-hot en-
+coded vectors.
+The loss is then calculated using the cross-
+entropy between the logits and the targets in
+their one-hot encoded version, so that their
+value is 1 at index i and 0 everywhere else,
+thus:
+L = 1
+2
+ LCE(logits, t) + LCE(logits⊤, t)
+
+7
+where LCE denotes the cross-entropy loss
+function.
+This formulation of the contrastive loss
+function efficiently aligns the neural repre-
+sentations zi with the corresponding image
+representations zj by maximizing cosine sim-
+ilarity for positive pairs and minimizing it for
+negative pairs. It is modulated by the tem-
+perature hyperparameter τ, which is set as 1
+in our experiments but can also be learned or
+modulated during training.
+2.3. Experiments
+We demonstrate the versatility of our
+model through three distinct experiments,
+each focused on a unique application in neu-
+ral data analysis.
+Decoding Visual Information: This in-
+volves starting with neural data (EEG, MEG,
+or fMRI) and projecting it into a common
+representation space using the corresponding
+neural model. Concurrently, we process all
+images in the test set specific to each modal-
+ity (comprising 337 for EEG, 2400 for MEG,
+and 982 for fMRI) and compute their similar-
+ities. The goal is to retrieve the top-n images
+that most closely match the neural signal rep-
+resentation. This process effectively allows us
+to ”decode” the neural data into potential vi-
+sual images that the subject might have been
+perceiving.
+Encoding: Here, we begin with an image,
+pass it through the image encoder, and simul-
+taneously process all neural data of a particu-
+lar modality through the neural encoder. We
+then search for the top-n neural representa-
+tions in the shared space and retrieve the cor-
+responding neural data in the test set. This
+approach enables us to obtain ”encoded” neu-
+ral representations corresponding to the given
+image.
+Modality Conversion:
+Here we capi-
+talize on the alignment of all modalities in
+the same representation space. For instance,
+given the fMRI representation of a subject
+who has viewed a specific image, we might
+ask: what could be the EEG or MEG activ-
+ity resulting in viewing a semantically simi-
+lar image? To answer this question, we en-
+code the sample from our input modality and
+the target search set from the desired output
+modality, selecting the top-n matches based
+on cosine similarity. To validate the effective-
+ness of this modality conversion, we compare
+the images associated with the source modal-
+ity during data acquisition with those linked
+to the target modality.
+These experiments collectively illustrate
+the robustness and multifaceted capabilities
+of our model, offering significant advance-
+ments in the fields of neural encoding, de-
+coding, and inter-modality translation.
+2.4. Evaluation
+To assess the performance of our model, we
+employed various metrics that gauge its pro-
+ficiency in extracting relevant semantic infor-
+mation from neural data.
+Decoding Performance: For decoding,
+the evaluation methodology is straightfor-
+ward.
+The ImageNetEEG and THINGS
+MEG datasets have distinct classes (40 and
+720, respectively), allowing us to calculate
+and compare top1 and top5 accuracy directly
+against chance levels and established base-
+lines like [28]. In contrast, the Natural Scene
+8
+Dataset (NSD) used for fMRI comprises com-
+plex scenes from the COCO dataset without
+distinct classes. To evaluate decoding perfor-
+mance in this context, we employed the CLIP
+2-way accuracy metric, comparing with the
+state of the art [24]. For consistency and ease
+of comparison, we extended this measure to
+the EEG and MEG settings as well.
+Encoding Performance: In the encod-
+ing scenario, where images are input to re-
+trieve neural data, we faced the challenge
+of the latter being inherently difficult to in-
+terpret and visualize. To ascertain whether
+relevant information was captured, we relied
+on an indirect metric. Each sample of neu-
+ral data is associated with a specific image
+viewed during the vision experiments.
+By
+encoding these images, we get candidate neu-
+ral representations of stimuli. We then com-
+pute the CLIP 2-way accuracy between the
+neural activity relative to the encoded image
+(ground truth) and the activities retrieved
+with the encoding model.
+This process in-
+volves starting with an image, obtaining can-
+didate neural data, and then visually com-
+paring the representation of images related
+to those candidates with the original image.
+A successful encoding process would typically
+result in the selection of neural data asso-
+ciated with the observation of semantically
+similar images.
+Modality
+Conversion
+Performance:
+The approach for evaluating modality con-
+version is similar to previous tasks in the
+pipeline. We initiate the process with neu-
+ral data from one modality and obtain rep-
+resentations in another. Naturally, since the
+datasets come from different subjects, we also
+obtain activity from another subject, which
+ideally has the closest representation in the
+shared space.
+The performance of this as-
+pect of our model is gauged using the CLIP
+2-way accuracy between the images related to
+the source and target modalities. This met-
+ric effectively measures how well our model
+translates semantic information across differ-
+ent neural modalities.
+3. Results
+The model’s performance in decoding neu-
+ral data into corresponding visual stimuli is
+quantified and presented in Table 1.
+The
+EEG module achieved a top1 accuracy of
+40.0% and a top5 accuracy of 54.3%, which
+is a substantial improvement over the base-
+line chance level accuracy figures of 2.5% for
+top1 and 12.5% for top5 accuracies. Notably,
+this module’s CLIP 2-way accuracy reached
+79.4%, indicating the model’s capability to
+decode EEG data with high reliability.
+Unfortunately, directly comparing these
+performances with literature could be diffi-
+cult, since recent work which at first sight
+delivers impressive performances [35, 36, 37]
+on this dataset have been seen to rely on con-
+tamination between train and test data due
+to an incorrect use of preprocessing choices
+[31].
+When comparing results with work
+that explicitly preprocesses data in order to
+avoid this confounding factor, we found per-
+formances that are on par with the state of
+teh art [28, 38], i.e.
+top1 accuracy within
+range (39-45%) for a multisubject network
+trained for classification.
+9
+Table 1: Model performance in decoding experiment. ”Baselines” columns refer to top1 and top5 chance
+level, while ”retrieval dataset size” is useful to put CLIP 2-way accuracy in context with other works.
+Neural Module
+top1
+accu-
+racy
+top5
+accu-
+racy
+CLIP
+2 way
+baseline
+accu-
+racy
+(%)
+baseline
+top5
+(%)
+Retrieval
+dataset
+size
+Number
+of
+classes
+EEG (ImageNet)
+40.0
+54.3
+79.4
+2.50
+12.50
+332
+40
+MEG (THINGS)
+1.20
+6.10
+60.1
+0.13
+0.65
+2400
+720
+fMRI (NSD)
+-
+-
+93.8
+-
+-
+982
+-
+For the MEG module, which faced the
+greater complexity of the THINGS dataset
+(720 classes), the model achieved a top1 ac-
+curacy of 1.2% and a top5 accuracy of 6.1%,
+which corresponds to 10 times the baseline
+chance level accuracies of 0.13% for top1
+and 0.65% for top5.
+The CLIP 2-way ac-
+curacy stood at 60.1%.
+This demonstrates
+the model’s adeptness in handling a more ex-
+tensive and varied set of images, comprising
+a total of 2,400 images. Again, these results
+are comparable with recent work on the same
+dataset which focused only on decoding of
+MEG images [39] where top5 accuracy was
+tested in several settings with performances
+in the range [1-8%].
+The fMRI module’s decoding performance
+was particularly notable, achieving a CLIP 2-
+way accuracy of 93% with the NSD dataset.
+Our results align well and even outperform
+findings from recent literature [6, 10, 9, 7, 24],
+though direct comparisons are challenging
+due to the varied focus and methodologies of
+these studies. Many of these works concen-
+trate on the detailed reconstruction of stimuli
+using complex pipelines that involve regress-
+ing fMRI data to a latent space, generating
+images, and then computing CLIP 2-way ac-
+curacy between the generated and actual im-
+ages. These processes typically involve train-
+ing individual models for each subject. De-
+spite these differences, the performance met-
+rics reported in these studies, which gener-
+ally fall within the range of [77-90%], are
+comparable to our results. This situates our
+approach within the high-performance spec-
+trum for multisubject settings. This high ac-
+curacy, obtained with a retrieval set of 982
+images, underscores the model’s proficiency
+in decoding complex scene representations
+from fMRI data.
+Fig 3 provides details on the model’s de-
+coding capabilities with fMRI, EEG, and
+MEG data. In fMRI Decoding, the model’s
+quality is evident. For example, when pre-
+sented with a stimulus depicting grazing an-
+imals, the fMRI module accurately retrieves
+other images of animals in similar pastoral
+settings.
+This level of detail suggests the
+model’s strong semantic grasp, as it not only
+10

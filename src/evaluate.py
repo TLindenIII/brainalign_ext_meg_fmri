@@ -53,6 +53,10 @@ def evaluate(model, test_loader, clip_dict, device):
                 
     # Average the projected representations per image condition as specified in the paper
     top1, top5, total = 0, 0, 0
+    total_two_way = 0.0
+    
+    # We will compute 2-way accuracy by comparing the true similarity against all distractor similarities
+    num_distractors = len(test_candidates) - 1
     
     for true_id, p_brain_trials in target_p_brains.items():
         if len(p_brain_trials) == 0:
@@ -61,16 +65,30 @@ def evaluate(model, test_loader, clip_dict, device):
         # Average the representation for this true_id
         avg_p_brain = np.mean(p_brain_trials, axis=0, keepdims=True)
         
-        # Distance against all 200 candidates
-        sims = cosine_similarity(avg_p_brain, test_candidates)
-        sorted_indices = np.argsort(sims, axis=1)[:, ::-1]
+        # Distance against all candidates
+        sims = cosine_similarity(avg_p_brain, test_candidates)[0]
+        sorted_indices = np.argsort(sims)[::-1]
         
-        best_5 = [unique_test_ids[idx] for idx in sorted_indices[0][:5]]
+        best_5 = [unique_test_ids[idx] for idx in sorted_indices[:5]]
         if true_id == best_5[0]: top1 += 1
         if true_id in best_5: top5 += 1
+        
+        # Compute 2-way accuracy: proportion of distractors that have lower similarity than the true image
+        true_idx = unique_test_ids.index(true_id)
+        true_sim = sims[true_idx]
+        
+        if num_distractors > 0:
+            # wins against distractors (note that true_sim > true_sim is False, so we don't accidentally count the true image)
+            wins = (true_sim > sims).sum()
+            total_two_way += (wins / num_distractors)
+            
         total += 1
                 
-    return (top1/total)*100 if total > 0 else 0, (top5/total)*100 if total > 0 else 0
+    return {
+        "top1": (top1/total)*100 if total > 0 else 0,
+        "top5": (top5/total)*100 if total > 0 else 0,
+        "two_way": (total_two_way/total)*100 if total > 0 else 0
+    }
 
 
 def main(modality, checkpoint_path):
@@ -116,14 +134,15 @@ def main(modality, checkpoint_path):
         model.load_state_dict(checkpoint)
         
     print("Beginning retrieval evaluation...")
-    top1, top5 = evaluate(model, test_loader, clip_dict, device)
+    metrics = evaluate(model, test_loader, clip_dict, device)
     
     print(f"\n--- Evaluation Results ({modality.upper()}) ---")
     out_lines = [
         f"--- Evaluation Results ({modality.upper()}) ---",
         f"Checkpoint: {checkpoint_path}",
-        f"Top-1 Retrieval: {top1:.2f}%",
-        f"Top-5 Retrieval: {top5:.2f}%"
+        f"Top-1 Retrieval: {metrics['top1']:.2f}%",
+        f"Top-5 Retrieval: {metrics['top5']:.2f}%",
+        f"2-Way Accuracy:  {metrics['two_way']:.2f}%"
     ]
     for line in out_lines:
         print(line)

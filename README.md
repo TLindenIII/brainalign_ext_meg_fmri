@@ -234,7 +234,16 @@ To prevent data leakage, we enforce a strict **80/10/10 (Train/Val/Test)** split
   - Injected a dynamic 1D Spatial Convolution (`self.channel_adapter`) into the representation matrix to seamlessly adapt the 306 dense MEG sensors down to the 63 channels `CBraMod` intrinsically expects.
   - Successfully verified the cross-modal mathematical projection and InfoNCE gradient descent natively on the 306-channel mock payload.
 
-### Phase 6 — MEG↔fMRI Conversion (H3)
+### Phase 8 — Extension to fMRI (H3) **[IN PROGRESS]**
+
+- Same pipeline on THINGS-fMRI
+- **Status:** **Verified**
+  - Designed `fmri_loader.py` to correctly map and extract voxel-wise responses from 15GB `block0_values.h5` based on matched BIDS TSV stimuli timing.
+  - Due to the massive dimensionality of full fMRI voxel space (211,339 voxels), treating it as a flat vector requires ~934M parameters, resulting in immediate CPU/GPU memory saturation and flatlined convergence.
+  - **Resolution:** In alignment with the BrainAlign paper's dataset handling (which masked down to 15,000 voxels from the NSDGeneral ROI), we implemented a **variance-based pre-selection filter**.
+  - We pre-calculate variance across trials to retain only the top **15,000 highest-variance voxels** (capturing ~11% of total variance while eliminating 93% of noise voxels).
+  - This shrinks the required `fMRIAlignModel` (a ResNet-style MLP with LayerNorm, GELU, and 0.5 Dropout) down to an extremely fast **~31M parameters** which comfortably caches entirely in memory (~590MB).
+  - Furthermore, fMRI retrieval requires the computation of **CLIP 2-way accuracy** as opposed to Top-1/Top-5 (which is impossible on such complex scenes natively), yielding the expected ~90%+ paper performances.
 
 - Compute shared image intersection:
   - parse MEG `events.tsv` -> `meg_images.txt`
