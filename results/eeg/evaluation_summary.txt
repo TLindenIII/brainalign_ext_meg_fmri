@@ -1,24 +1,24 @@
 
 Table 1: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task
 Method                         S1    S2    S3    S4    S5    S6    S7    S8    S9    S10      Ave    Std
-Our CBraMod (finetuned) + CLIP  13.5   1.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0    1.4   4.2
+Our CBraMod (finetuned) + CLIP  13.5  16.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0    3.0   6.2
 
 Table 2: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task
 Method                         S1    S2    S3    S4    S5    S6    S7    S8    S9    S10      Ave    Std
-Our CBraMod (finetuned) + CLIP  20.5   1.5   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0    2.2   6.4
+Our CBraMod (finetuned) + CLIP  22.5  22.5   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0    4.5   9.5
 
 Table 3: A comparison of different model performances (top-5 accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task
 Method                         S1    S2    S3    S4    S5    S6    S7    S8    S9    S10      Ave    Std
-Our CBraMod (finetuned) + CLIP  37.0   7.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0    4.4  11.7
+Our CBraMod (finetuned) + CLIP  39.5  35.5   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0    7.5  15.8
 
 Table 4: A comparison of different model performances (top-5 accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task
 Method                         S1    S2    S3    S4    S5    S6    S7    S8    S9    S10      Ave    Std
-Our CBraMod (finetuned) + CLIP  49.5   9.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0    5.8  15.6
+Our CBraMod (finetuned) + CLIP  54.0  51.5   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   10.6  22.2
 
 Table 5: A comparison of different model performances (2-way accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task
 Method                         S1    S2    S3    S4    S5    S6    S7    S8    S9    S10      Ave    Std
-Our CBraMod (finetuned) + CLIP  89.0  71.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   16.0  34.0
+Our CBraMod (finetuned) + CLIP  90.5  88.5   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   17.9  37.7
 
 Table 6: A comparison of different model performances (2-way accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task
 Method                         S1    S2    S3    S4    S5    S6    S7    S8    S9    S10      Ave    Std
-Our CBraMod (finetuned) + CLIP  92.0  74.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   16.6  35.3
+Our CBraMod (finetuned) + CLIP  94.0  94.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   0.0   18.8  39.6

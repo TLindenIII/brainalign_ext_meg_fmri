@@ -52,7 +52,7 @@ def get_dataloader(config, modality, split, subject=1):
     batch_size = config["training"]["batch_size"][modality]
     return DataLoader(dataset, batch_size=batch_size, shuffle=(split=="train"))
 
-def train(config_path, modality, subject, epochs_override=None, resume=False):
+def train(config_path, modality, subject, epochs_override=None, resume=False, resume_best=False):
     config = load_config(config_path)
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device} for modality {modality.upper()}, subject {subject:02d}")
@@ -114,9 +114,14 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
     latest_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_latest.pt"
     
     start_epoch = 0
-    if resume:
+    if resume or resume_best:
         target_ckpt = None
-        if latest_ckpt_path.exists():
+        
+        # Priority: resume_best flag -> latest_ckpt -> best_ckpt
+        if resume_best and best_ckpt_path.exists():
+            target_ckpt = best_ckpt_path
+            print(f"Resume-best flag detected. Using 'best' checkpoint: {target_ckpt}")
+        elif latest_ckpt_path.exists():
             target_ckpt = latest_ckpt_path
             print(f"Resume flag detected. Found 'latest' checkpoint: {target_ckpt}")
         elif best_ckpt_path.exists():
@@ -162,6 +167,12 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
             # Loss computation
             loss = clip_loss(p_brain, y_clip, model.logit_scale.to(device))
             
+            # Safety guard: skip batch if loss is NaN (e.g. from corrupted/infinite inputs)
+            if not torch.isfinite(loss):
+                pbar.set_postfix({"Loss": "NaN - skipped"})
+                optimizer.zero_grad()
+                continue
+            
             # Backward pass
             loss.backward()
             optimizer.step()
@@ -172,7 +183,7 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
         avg_loss = total_loss / len(train_loader)
         print(f"Epoch {epoch+1} finished. Avg Loss: {avg_loss:.4f}")
         
-        if val_loader is not None and ((epoch + 1) % 5 == 0 or epoch == 0):
+        if val_loader is not None:
             metrics = evaluate(model, val_loader, clip_dict, device)
             top1 = metrics['top1']
             top5 = metrics['top5']
@@ -213,7 +224,8 @@ if __name__ == "__main__":
     parser.add_argument("--modality", type=str, required=True, choices=["eeg", "meg", "fmri"], help="Data modality to train on")
     parser.add_argument("--subject", type=int, default=1, help="Subject ID to train on (e.g., 1 for sub-01)")
     parser.add_argument("--epochs", type=int, default=None, help="Override the number of epochs (default: config.yaml value)")
-    parser.add_argument("--resume", action="store_true", help="Resume from the best checkpoint if it exists")
+    parser.add_argument("--resume", action="store_true", help="Resume from the latest checkpoint if it exists")
+    parser.add_argument("--resume-best", action="store_true", help="Resume from the best checkpoint instead of the latest")
     args = parser.parse_args()
     
-    train(args.config, args.modality, args.subject, args.epochs, args.resume)
+    train(args.config, args.modality, args.subject, args.epochs, args.resume, args.resume_best)

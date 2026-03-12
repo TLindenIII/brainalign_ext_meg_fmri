@@ -25,6 +25,6 @@ training:
     fmri: 256
   learning_rate: 3e-4
   epochs:
-    eeg: 60
+    eeg: 25
     meg: 60
     fmri: 60

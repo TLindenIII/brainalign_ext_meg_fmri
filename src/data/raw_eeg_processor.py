@@ -96,7 +96,18 @@ def preprocess_raw_eeg(sub, project_dir, sfreq=100, seed=20200220):
             sigma_part[p] = sigma_cond.mean(axis=0)
             
         sigma_tot = sigma_part.mean(axis=0)
-        sigma_inv = scipy.linalg.fractional_matrix_power(sigma_tot, -0.5)
+        
+        # Tikhonov regularization: add small diagonal term to prevent singular matrix
+        # A near-singular covariance matrix (e.g., sub-05) causes fractional_matrix_power
+        # to return NaN. This is the standard fix used in robust MVNN implementations.
+        reg = 1e-6 * np.eye(sigma_tot.shape[0]) 
+        sigma_tot_reg = sigma_tot + reg
+        sigma_inv = scipy.linalg.fractional_matrix_power(sigma_tot_reg, -0.5)
+        
+        # Safety guard: if inversion still produced NaN/Inf, fall back to identity (no whitening)
+        if not np.isfinite(sigma_inv).all():
+            print(f"  WARNING: MVNN inversion failed for Session {s+1} even with regularization. Using identity (no whitening).")
+            sigma_inv = np.eye(sigma_tot.shape[0])
         
         whitened_test.append(np.reshape((np.reshape(session_data[0], (-1, session_data[0].shape[2], session_data[0].shape[3])).swapaxes(1, 2) @ sigma_inv).swapaxes(1, 2), session_data[0].shape))
         whitened_train.append(np.reshape((np.reshape(session_data[1], (-1, session_data[1].shape[2], session_data[1].shape[3])).swapaxes(1, 2) @ sigma_inv).swapaxes(1, 2), session_data[1].shape))
