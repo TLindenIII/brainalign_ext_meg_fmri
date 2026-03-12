@@ -1,36 +1,30 @@
-# BrainAlign-Style Representation-First Alignment on THINGS (EEG → MEG → fMRI)
+# BrainAlign & Modality Conversion Integration on THINGS (EEG → MEG → fMRI)
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/TLindenIII/brainalign_ext_meg_fmri)
 
-## Context
+## Context & Literature Synthesis
 
-This repo implements a **representation-first, contrastive alignment pipeline** that maps brain signals into a **shared CLIP-anchored semantic space** for retrieval and cross-modal evaluation.
+This repository implements a **representation-first, contrastive alignment pipeline** that synthesizes the state-of-the-art methodologies from two core papers:
+1. **BrainAlign (OpenReview jbQRvucRKx):** Demonstrated that fine-tuning a pre-trained EEG foundation model (**CBraMod**) with contrastive alignment dramatically outperforms training task-specific encoders from scratch.
+2. **Modality Conversion (arXiv 2411.09723):** Demonstrated that aligning disparate modalities (EEG, MEG, fMRI) to a shared visual semantic space (CLIP) enables cross-modal "modality conversion" and universal encoding/decoding.
+
+Our goal is to apply the powerful **CBraMod architecture from BrainAlign** to the **multimodal evaluation framework from the Modality Conversion paper**, targeting the overlapping images in the **THINGS** datasets (EEG2, MEG, fMRI).
 
 We will:
+1. **Replicate** BrainAlign-style EEG→CLIP retrieval on **THINGS-EEG2** using **CBraMod**.
+2. **Extend** BrainAlign's representation-first approach to **THINGS-MEG** for MEG→CLIP retrieval.
+3. **Replicate Modality Conversion** by mapping fMRI (via MLP) and MEG into the shared CLIP space, enabling MEG↔fMRI cross-modal retrieval at the image level.
+4. Compare against **linear baselines** (ridge/CCA) to test whether contrastive alignment better captures semantic geometry.
 
-1. **Replicate** BrainAlign-style EEG→CLIP retrieval on **THINGS-EEG2** using **CBraMod** as the brain encoder.
-2. **Extend** to MEG→CLIP retrieval on **THINGS-MEG**.
-3. **Extend** to MEG↔fMRI “modality conversion” by evaluating **cross-modal retrieval** (MEG embeddings retrieve matching fMRI embeddings) in the shared CLIP space at the **image level**.
-4. Compare to **linear baselines** (ridge/CCA) to test whether contrastive alignment better captures semantic structure.
-
----
-
-## Context from the Original BrainAlign Paper
-
-The original [BrainAlign paper] introduced a representation-first approach to brain decoding, hypothesizing that **fine-tuning** a pre-trained foundation model (like CBraMod) as an inductive bias dramatically outperforms treating it as a frozen feature extractor.
-
-Their primary findings on the THINGS-EEG2 dataset:
-
-- **Best Backbone:** Their configuration pairing the fine-tuned CBraMod with a **CORNet-S** image encoder achieved the highest cross-subject average Top-1 accuracy: **14.2%** (EEG→Image) and **23.2%** (Image→EEG). They hypothesized that CORNet-S better mimics the recurrent connections of the primate ventral stream.
-- **SOTA Comparisons:** Their architecture significantly outperformed existing frameworks like BraVL (5.8%), the base NICE framework (13.8%), and achieved parity with NICE-GA (15.6%) but converging 70% faster (within 60 epochs).
-- **Our Deviation:** While BrainAlign used ResNet50, CORNet-S, and CLIP, we exclusively anchor our shared semantic space to **CLIP**. This serves our specific extension goal: a robust, text-aligned multimodal embedding space to bridge MEG and fMRI signals.
+Their primary findings on the datasets:
+- **BrainAlign Best Backbone:** The configuration pairing the fine-tuned CBraMod achieved 14.2% Top-1 (EEG→Image) and 23.2% (Image→EEG). They hypothesized that capturing recurrent representations mimics the primate ventral stream.
+- **Modality Conversion Best Result:** The fMRI model using an MLP achieved 93.8% CLIP 2-Way accuracy on NSD. Furthermore, projecting MEG→fMRI matched conceptual semantic representations with 95.40% normalized accuracy.
 
 ---
 
 ## Goal
 
-Test whether a **CBraMod + symmetric contrastive alignment** pipeline generalizes:
-
+Test whether synthesizing the **CBraMod + symmetric contrastive alignment** pipeline generalizes:
 - from EEG to MEG (retrieval),
 - and from MEG to fMRI (cross-modal conversion) via a shared CLIP-anchored space.
 

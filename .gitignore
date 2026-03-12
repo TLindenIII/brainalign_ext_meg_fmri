@@ -211,3 +211,6 @@ __marimo__/
 
 # Un-ignore the globally ignored cache directory
 !clip_cache/
+
+# Planning
+/planning/*

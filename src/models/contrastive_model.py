@@ -64,6 +64,14 @@ class BrainAlignModel(nn.Module):
         # If the incoming seq_len != 200, we will interpolate it in the forward pass.
         self.seq_len = seq_len
         
+        # BrainAlign Spatial Region Projection Network (Section 3.1)
+        # Groups the 63 channels into 4 anatomical regions: Occipital, Parietal, Temporal, Other
+        self.region_projections = nn.ModuleList([
+            nn.Linear(200, 200) for _ in range(4)
+        ])
+        # Learnable softmax weights for region aggregation
+        self.region_weights = nn.Parameter(torch.ones(4))
+        
         # Projection Head (as defined in BrainAlign: Linear -> ReLU -> Linear)
         self.projection_head = nn.Sequential(
             nn.Linear(200, brain_embed_dim),
@@ -91,12 +99,27 @@ class BrainAlignModel(nn.Module):
             x_brain = x_brain.unsqueeze(2) 
             
         # Extract brain representation
-        # CBraMod outputs shape (B, Channels, Patches, OutDim) -> (B, 63, 1, 512)
+        # CBraMod outputs shape (B, Channels, Patches, OutDim) -> (B, 63, 1, 200)
         z_brain = self.brain_encoder(x_brain)
         
-        # We flatten spatial/patch dimensions down to (B, OutDim)
-        # BrainAlign uses average pooling across the channels/patches before projecting
-        z_brain = z_brain.mean(dim=(1, 2)) # Shape: (B, 512)
+        # Flatten patch dimension down to (B, 63, 200)
+        z_brain = z_brain.squeeze(2)
+        
+        # BrainAlign Spatial Region Segregation
+        # Partition 63 channels into 4 pseudo-anatomical regions of ~16 channels each
+        regions = [
+            z_brain[:, :16, :].mean(dim=1),     # Occipital
+            z_brain[:, 16:32, :].mean(dim=1),   # Parietal
+            z_brain[:, 32:48, :].mean(dim=1),   # Temporal
+            z_brain[:, 48:, :].mean(dim=1)      # Other
+        ]
+        
+        # Apply region-specific projections
+        projected_regions = [proj(reg) for proj, reg in zip(self.region_projections, regions)]
+        
+        # Aggregate via learnable softmax weights
+        weights = F.softmax(self.region_weights, dim=0)
+        z_brain = sum(w * reg for w, reg in zip(weights, projected_regions)) # (B, 200)
         
         # Project to CLIP space
         p_brain = self.projection_head(z_brain)

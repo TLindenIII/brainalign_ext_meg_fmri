@@ -7,7 +7,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from pathlib import Path
 from sklearn.metrics.pairwise import cosine_similarity
-
 from src.models.contrastive_model import BrainAlignModel
 from src.data.eeg_loader import THINGSEEG2Dataset
 
@@ -55,32 +54,44 @@ def evaluate_subject(model, test_loader, clip_dict, device):
     
     # EEG-to-Image similarity: queries are EEG, gallery are Images
     sims_e2i = cosine_similarity(avg_p_brains, test_candidates) # shape: (200, 200)
-    top1_e2i = 0
-    top5_e2i = 0
+    top1_e2i, top5_e2i, two_way_e2i = 0, 0, 0
     for i in range(200):
-        # The correct match is the element on the diagonal where row i matches col i
+        # Top-1 and Top-5
         sorted_indices = np.argsort(sims_e2i[i])[::-1]
         if sorted_indices[0] == i:
             top1_e2i += 1
         if i in sorted_indices[:5]:
             top5_e2i += 1
+            
+        # 2-way accuracy: pair true image against a randomly chosen imposter
+        imposter_idx = np.random.choice([x for x in range(200) if x != i])
+        if sims_e2i[i, i] > sims_e2i[i, imposter_idx]:
+            two_way_e2i += 1
+            
     e2i_acc_top1 = (top1_e2i / 200.0) * 100.0
     e2i_acc_top5 = (top5_e2i / 200.0) * 100.0
+    e2i_acc_2way = (two_way_e2i / 200.0) * 100.0
     
     # Image-to-EEG similarity: queries are Images, gallery are EEG
     sims_i2e = cosine_similarity(test_candidates, avg_p_brains) # shape: (200, 200)
-    top1_i2e = 0
-    top5_i2e = 0
+    top1_i2e, top5_i2e, two_way_i2e = 0, 0, 0
     for i in range(200):
         sorted_indices = np.argsort(sims_i2e[i])[::-1]
         if sorted_indices[0] == i:
             top1_i2e += 1
         if i in sorted_indices[:5]:
             top5_i2e += 1
+            
+        # 2-way accuracy
+        imposter_idx = np.random.choice([x for x in range(200) if x != i])
+        if sims_i2e[i, i] > sims_i2e[i, imposter_idx]:
+            two_way_i2e += 1
+            
     i2e_acc_top1 = (top1_i2e / 200.0) * 100.0
     i2e_acc_top5 = (top5_i2e / 200.0) * 100.0
+    i2e_acc_2way = (two_way_i2e / 200.0) * 100.0
     
-    return e2i_acc_top1, e2i_acc_top5, i2e_acc_top1, i2e_acc_top5
+    return e2i_acc_top1, e2i_acc_top5, e2i_acc_2way, i2e_acc_top1, i2e_acc_top5, i2e_acc_2way
 
 def main(subject):
     config = load_config()
@@ -92,8 +103,10 @@ def main(subject):
     
     results_e2i_top1 = []
     results_e2i_top5 = []
+    results_e2i_2way = []
     results_i2e_top1 = []
     results_i2e_top5 = []
+    results_i2e_2way = []
     
     subjects_to_eval = [subject] if subject is not None else range(1, 11)
     
@@ -112,8 +125,10 @@ def main(subject):
             print(f"Warning: Checkpoint {checkpoint_path} not found. Skipping subject {sub:02d} and assigning 0.0 accuracy.")
             results_e2i_top1.append(0.0)
             results_e2i_top5.append(0.0)
+            results_e2i_2way.append(0.0)
             results_i2e_top1.append(0.0)
             results_i2e_top5.append(0.0)
+            results_i2e_2way.append(0.0)
             continue
             
         model = BrainAlignModel(
@@ -125,7 +140,8 @@ def main(subject):
         ).to(device)
             
         print(f"Loading checkpoint for subject {sub:02d}: {checkpoint_path}")
-        model.load_state_dict(torch.load(checkpoint_path, map_location=device, weights_only=True))
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+        model.load_state_dict(checkpoint["model_state_dict"])
         
         dataset = THINGSEEG2Dataset(
             eeg_dir=config["data"]["eeg_dir"], 
@@ -133,18 +149,22 @@ def main(subject):
             split="test",
             subject=sub
         )
-        test_loader = DataLoader(dataset, batch_size=config["training"]["batch_size"], shuffle=False)
+        test_loader = DataLoader(dataset, batch_size=config["training"]["batch_size"]["eeg"], shuffle=False)
             
-        e2i_acc_top1, e2i_acc_top5, i2e_acc_top1, i2e_acc_top5 = evaluate_subject(model, test_loader, clip_dict, device)
+        e2i_acc_top1, e2i_acc_top5, e2i_acc_2way, i2e_acc_top1, i2e_acc_top5, i2e_acc_2way = evaluate_subject(model, test_loader, clip_dict, device)
         results_e2i_top1.append(e2i_acc_top1)
         results_e2i_top5.append(e2i_acc_top5)
+        results_e2i_2way.append(e2i_acc_2way)
         results_i2e_top1.append(i2e_acc_top1)
         results_i2e_top5.append(i2e_acc_top5)
+        results_i2e_2way.append(i2e_acc_2way)
         
     e2i_arr_top1 = np.array(results_e2i_top1)
     e2i_arr_top5 = np.array(results_e2i_top5)
+    e2i_arr_2way = np.array(results_e2i_2way)
     i2e_arr_top1 = np.array(results_i2e_top1)
     i2e_arr_top5 = np.array(results_i2e_top5)
+    i2e_arr_2way = np.array(results_i2e_2way)
     
     e2i_mean_top1 = e2i_arr_top1.mean()
     e2i_std_top1 = e2i_arr_top1.std(ddof=1) if len(e2i_arr_top1) > 1 else 0.0
@@ -152,11 +172,17 @@ def main(subject):
     e2i_mean_top5 = e2i_arr_top5.mean()
     e2i_std_top5 = e2i_arr_top5.std(ddof=1) if len(e2i_arr_top5) > 1 else 0.0
     
+    e2i_mean_2way = e2i_arr_2way.mean()
+    e2i_std_2way = e2i_arr_2way.std(ddof=1) if len(e2i_arr_2way) > 1 else 0.0
+    
     i2e_mean_top1 = i2e_arr_top1.mean()
     i2e_std_top1 = i2e_arr_top1.std(ddof=1) if len(i2e_arr_top1) > 1 else 0.0
     
     i2e_mean_top5 = i2e_arr_top5.mean()
     i2e_std_top5 = i2e_arr_top5.std(ddof=1) if len(i2e_arr_top5) > 1 else 0.0
+    
+    i2e_mean_2way = i2e_arr_2way.mean()
+    i2e_std_2way = i2e_arr_2way.std(ddof=1) if len(i2e_arr_2way) > 1 else 0.0
     
     def format_row(method_name, results_arr, mean, std):
         row_str = f"{method_name:<30} "
@@ -168,7 +194,8 @@ def main(subject):
     results_out_dir = Path("results/eeg")
     results_out_dir.mkdir(parents=True, exist_ok=True)
     
-    out_lines = []
+    from typing import List
+    out_lines: List[str] = []
     
     out_lines.append("\nTable 1: A comparison of different model performances (top-1 accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task")
     header = f"{'Method':<30} " + " ".join([f"S{s:<4}" for s in subjects_to_eval]) + f"{'Ave':>7} {'Std':>6}"
@@ -186,6 +213,14 @@ def main(subject):
     out_lines.append("\nTable 4: A comparison of different model performances (top-5 accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task")
     out_lines.append(header)
     out_lines.append(format_row("Our CBraMod (finetuned) + CLIP", i2e_arr_top5, i2e_mean_top5, i2e_std_top5))
+
+    out_lines.append("\nTable 5: A comparison of different model performances (2-way accuracies) across evaluated subjects for the EEG-to-Image 200-way zero-shot classification task")
+    out_lines.append(header)
+    out_lines.append(format_row("Our CBraMod (finetuned) + CLIP", e2i_arr_2way, e2i_mean_2way, e2i_std_2way))
+    
+    out_lines.append("\nTable 6: A comparison of different model performances (2-way accuracies) across evaluated subjects for the Image-to-EEG 200-way zero-shot classification task")
+    out_lines.append(header)
+    out_lines.append(format_row("Our CBraMod (finetuned) + CLIP", i2e_arr_2way, i2e_mean_2way, i2e_std_2way))
     
     for line in out_lines:
         print(line)

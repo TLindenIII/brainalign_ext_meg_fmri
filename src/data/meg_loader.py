@@ -69,6 +69,13 @@ class THINGSMEGDataset(Dataset):
             print(f"Reading {epo_file.name}...")
             epochs = mne.read_epochs(str(epo_file), preload=True, verbose='error')
             
+            # Modality Conversion Paper Alignment:
+            # Crop to -0.5s to 1.0s and resample to 120Hz. We use max/min to safely bound.
+            tmin = max(epochs.times[0], -0.5)
+            tmax = min(epochs.times[-1], 1.0)
+            epochs.crop(tmin=tmin, tmax=tmax)
+            epochs.resample(120.0)
+            
             # epochs.get_data() returns numpy array (epochs, channels, times)
             data = epochs.get_data(copy=False).astype(np.float32)
             all_epochs_data.append(data)

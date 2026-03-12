@@ -4,16 +4,16 @@ This directory contains shell scripts for automating the training and evaluation
 
 ## Available Scripts
 
-### `train_all_subjects.sh`
+### `train_all_subjects.sh` (Linux/Mac) & `train_all_subjects.ps1` (Windows)
 
-This script automates the process of sequentially running the training loop (`src/train.py`) across all 10 subjects for a specified modality. It ensures that the model is trained consistently and provides a streamlined way to run the entire dataset without manual intervention for each subject.
+These scripts automate the process of sequentially running the training loop (`src/train.py`) across all 10 subjects for a specified modality. They ensure that the model is trained consistently and provides a streamlined way to run the entire dataset without manual intervention for each subject.
 
 #### Features:
 
 - **Sequential Execution:** Loops from Subject 1 to 10 automatically.
 - **Checkpoint Skipping:** If it detects an existing `best.pt` checkpoint for a subject, it will skip training for that subject to save time, unless forced or resuming.
-- **Virtual Environment:** Automatically sources `.venv/bin/activate` if it exists in the root directory.
-- **Final Evaluation:** Once all 10 subjects are completed, it automatically calls `src/evaluate_table.py` to generate the final averaged SOTA performance matrix.
+- **Virtual Environment:** Automatically sources `.venv/bin/activate` (`.sh`) or `.\venv\Scripts\Activate.ps1` (`.ps1`) if it exists in the root directory.
+- **Final Evaluation:** Once all 10 subjects are completed, it automatically calls `src/evaluate_table.py` (`-m src.evaluate_table` on Windows) to generate the final averaged SOTA performance matrix.
 
 #### Checkpoint System:
 
@@ -31,10 +31,16 @@ Checkpoints are rigidly isolated by modality to prevent cross-contamination. The
 
 #### Usage:
 
-Run this script from the **root directory** of the project:
+Run the appropriate script for your OS from the **root directory** of the project:
 
+**Linux/Mac:**
 ```bash
 ./scripts/train_all_subjects.sh [OPTIONS]
+```
+
+**Windows (PowerShell):**
+```powershell
+.\scripts\train_all_subjects.ps1 -Modality [OPTIONS]
 ```
 
 #### Arguments:

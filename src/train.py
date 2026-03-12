@@ -6,7 +6,6 @@ import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from pathlib import Path
-
 # Local imports
 from src.models.contrastive_model import BrainAlignModel
 from src.models.fmri_model import fMRIAlignModel
@@ -98,19 +97,14 @@ def train(config_path, modality, subject, epochs_override=None, resume=False):
     
     print("Fine-tuning the entire model end-to-end (including the pretrained CBraMod backbone).")
     lr = float(config["training"]["learning_rate"])
-    if modality == "fmri":
-        # fMRI training hyperparameters from the BrainAlign paper
-        optimizer = torch.optim.AdamW(
-            model.parameters(), 
-            lr=lr,
-            weight_decay=1e-3
-        )
-        print(f"Using AdamW optimizer with lr={lr:.1e}, weight_decay=1e-3")
-    else:
-        optimizer = torch.optim.Adam(
-            model.parameters(), 
-            lr=lr
-        )
+    
+    # BrainAlign and Modality Conversion both specify AdamW with 1e-3 weight decay for ALL models
+    optimizer = torch.optim.AdamW(
+        model.parameters(), 
+        lr=lr,
+        weight_decay=1e-3
+    )
+    print(f"Using AdamW optimizer with lr={lr:.1e}, weight_decay=1e-3")
     
     epochs = config["training"]["epochs"][modality] if epochs_override is None else epochs_override
     best_val_metric = 0.0
