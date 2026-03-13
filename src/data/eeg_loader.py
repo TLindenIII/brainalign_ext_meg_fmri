@@ -13,21 +13,24 @@ class THINGSEEG2Dataset(Dataset):
     Provides the data contract: x (brain tensor), image_id, and y_clip (CLIP embedding).
     """
     
-    def __init__(self, eeg_dir, clip_cache_path, split="train", transform=None, subject=1):
+    def __init__(self, eeg_dir, clip_cache_path, split="train", transform=None, subject=1, quiet=False):
         self.eeg_dir = Path(eeg_dir)
         self.split = split
         self.transform = transform
         self.subject = subject
+        self.quiet = quiet
         
         # Load CLIP embeddings
-        print(f"Loading CLIP cache from {clip_cache_path}")
+        if not self.quiet:
+            print(f"Loading CLIP cache from {clip_cache_path}")
         self.clip_cache = np.load(clip_cache_path)
         
         # Load metadata
         metadata_path = self.eeg_dir / "stimuli" / "image_metadata.npy"
         self.metadata = np.load(metadata_path, allow_pickle=True).item()
         
-        print(f"Loading EEG {split} data for subject {subject:02d}...")
+        if not self.quiet:
+            print(f"Loading EEG {split} data for subject {subject:02d}...")
         
         eeg_data_dir = self.eeg_dir / "preprocessed" / f"sub-{self.subject:02d}"
         if not eeg_data_dir.exists():

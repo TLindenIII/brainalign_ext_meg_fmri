@@ -14,10 +14,14 @@ def load_config(config_path="config.yaml"):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
-def evaluate_subject(model, test_loader, clip_dict, device):
+def evaluate_subject(model, test_loader, clip_dict, device, quiet=False):
     model.eval()
     
-    unique_test_ids = list(set([Path(f).stem for f in test_loader.dataset.files]))
+    # 1. Prepare candidates
+    if hasattr(test_loader.dataset, 'files'):
+        unique_test_ids = list(set([Path(f).stem for f in test_loader.dataset.files]))
+    else:
+        unique_test_ids = list(set([t["image_id"] for t in test_loader.dataset.trials]))
     unique_test_ids.sort() # Ensure consistent ordering mapping the 200 class indices to the arrays
     
     test_candidates = []
@@ -28,7 +32,7 @@ def evaluate_subject(model, test_loader, clip_dict, device):
     target_p_brains = {tid: [] for tid in unique_test_ids}
     
     with torch.no_grad():
-        for batch in tqdm(test_loader, desc="Evaluating", leave=False):
+        for batch in tqdm(test_loader, desc="Evaluating", leave=False, disable=quiet):
             x_brain = batch["x"].to(device)
             if x_brain.dim() == 2:
                 x_brain = x_brain.unsqueeze(1)
@@ -111,7 +115,7 @@ def main(subject):
     subjects_to_eval = [subject] if subject is not None else range(1, 11)
     
     # We load a sample dataset just to extract the input dimensions
-    dataset1 = THINGSEEG2Dataset(eeg_dir=config["data"]["eeg_dir"], clip_cache_path=clip_cache_path, split="test", subject=1)
+    dataset1 = THINGSEEG2Dataset(eeg_dir=config["data"]["eeg_dir"], clip_cache_path=clip_cache_path, split="test", subject=1, quiet=True)
     loader1 = DataLoader(dataset1, batch_size=1, shuffle=False)
     batch = next(iter(loader1))
     in_shape = batch["x"].shape[1:]
@@ -147,11 +151,12 @@ def main(subject):
             eeg_dir=config["data"]["eeg_dir"], 
             clip_cache_path=clip_cache_path, 
             split="test",
-            subject=sub
+            subject=sub,
+            quiet=True
         )
         test_loader = DataLoader(dataset, batch_size=config["training"]["batch_size"]["eeg"], shuffle=False)
             
-        e2i_acc_top1, e2i_acc_top5, e2i_acc_2way, i2e_acc_top1, i2e_acc_top5, i2e_acc_2way = evaluate_subject(model, test_loader, clip_dict, device)
+        e2i_acc_top1, e2i_acc_top5, e2i_acc_2way, i2e_acc_top1, i2e_acc_top5, i2e_acc_2way = evaluate_subject(model, test_loader, clip_dict, device, quiet=True)
         results_e2i_top1.append(e2i_acc_top1)
         results_e2i_top5.append(e2i_acc_top5)
         results_e2i_2way.append(e2i_acc_2way)
