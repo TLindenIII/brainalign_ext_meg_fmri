@@ -44,6 +44,7 @@ if ($SubjectIds.Count -eq 0) {
 }
 
 $CheckpointSuffix = if ($SharedOnly) { "_shared" } else { "" }
+$CheckpointStemExtra = if ($Modality -eq "meg") { "_attnpool" } else { "" }
 
 for ($idx = 0; $idx -lt $SubjectIds.Count; $idx++) {
     $i = $SubjectIds[$idx]
@@ -52,7 +53,7 @@ for ($idx = 0; $idx -lt $SubjectIds.Count; $idx++) {
     Write-Host "============================================================"
     
     $SubId = "{0:D2}" -f $i
-    $CheckpointPath = "checkpoints\${Modality}\${Modality}_brainalign_sub${SubId}${CheckpointSuffix}_best.pt"
+    $CheckpointPath = "checkpoints\${Modality}\${Modality}_brainalign_sub${SubId}${CheckpointStemExtra}${CheckpointSuffix}_best.pt"
     
     if ((Test-Path $CheckpointPath) -and -not $Resume) {
         Write-Host "Checkpoint for Subject $i already exists. Skipping training..."

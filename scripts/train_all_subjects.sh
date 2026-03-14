@@ -55,6 +55,11 @@ if [ -n "$SHARED_ONLY" ]; then
     CHECKPOINT_SUFFIX="_shared"
 fi
 
+CHECKPOINT_STEM_EXTRA=""
+if [ "$MODALITY" = "meg" ]; then
+    CHECKPOINT_STEM_EXTRA="_attnpool"
+fi
+
 for i in "${SUBJECT_IDS[@]}"
 do
     echo "============================================================"
@@ -63,7 +68,7 @@ do
     
     # Check if the checkpoint already exists to avoid redundant training
     SUB_ID=$(printf "%02d" $i)
-    if [ -f "checkpoints/${MODALITY}/${MODALITY}_brainalign_sub${SUB_ID}${CHECKPOINT_SUFFIX}_best.pt" ] && [ -z "$RESUME" ]; then
+    if [ -f "checkpoints/${MODALITY}/${MODALITY}_brainalign_sub${SUB_ID}${CHECKPOINT_STEM_EXTRA}${CHECKPOINT_SUFFIX}_best.pt" ] && [ -z "$RESUME" ]; then
         echo "Checkpoint for Subject $i already exists. Skipping training..."
         echo ""
         continue

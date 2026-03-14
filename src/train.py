@@ -3,7 +3,7 @@ import argparse
 import yaml
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from tqdm import tqdm
 from pathlib import Path
 # Local imports
@@ -14,6 +14,15 @@ from src.data.eeg_loader import THINGSEEG2Dataset
 from src.data.meg_loader import THINGSMEGDataset
 from src.data.fmri_loader import THINGSfMRIDataset
 from src.evaluate import evaluate
+
+
+def checkpoint_stem_for(modality, subject, shared_only=False):
+    stem = f"{modality}_brainalign_sub{subject:02d}"
+    if modality == "meg":
+        stem += "_attnpool"
+    if shared_only:
+        stem += "_shared"
+    return stem
 
 def load_config(config_path="config.yaml"):
     with open(config_path, "r") as f:
@@ -55,6 +64,31 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
     batch_size = config["training"]["batch_size"][modality]
     return DataLoader(dataset, batch_size=batch_size, shuffle=(split=="train"))
 
+
+def get_meg_train_val_dataloaders(config, subject=1, shared_only=False):
+    clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
+    full_dataset = THINGSMEGDataset(
+        meg_dir=config["data"]["meg_dir"],
+        clip_cache_path=clip_cache_path,
+        split="all",
+        subject=subject,
+        shared_only=shared_only,
+    )
+
+    train_images = full_dataset.image_splits["train"]
+    val_images = full_dataset.image_splits["val"]
+    train_indices = [idx for idx, trial in enumerate(full_dataset.trials) if trial["image_id"] in train_images]
+    val_indices = [idx for idx, trial in enumerate(full_dataset.trials) if trial["image_id"] in val_images]
+
+    batch_size = config["training"]["batch_size"]["meg"]
+    train_loader = DataLoader(Subset(full_dataset, train_indices), batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(Subset(full_dataset, val_indices), batch_size=batch_size, shuffle=False)
+    print(
+        f"Reused one MEG preload for train/val: "
+        f"{len(train_indices)} train trials, {len(val_indices)} val trials"
+    )
+    return train_loader, val_loader
+
 def train(config_path, modality, subject, epochs_override=None, resume=False, resume_best=False, shared_only=False):
     config = load_config(config_path)
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
@@ -63,8 +97,15 @@ def train(config_path, modality, subject, epochs_override=None, resume=False, re
     
     # Setup data
     print("Initializing dataloader...")
-    train_loader = get_dataloader(config, modality, split="train", subject=subject, shared_only=shared_only)
-    val_loader = get_dataloader(config, modality, split="val", subject=subject, shared_only=shared_only)
+    if modality == "meg":
+        train_loader, val_loader = get_meg_train_val_dataloaders(
+            config,
+            subject=subject,
+            shared_only=shared_only,
+        )
+    else:
+        train_loader = get_dataloader(config, modality, split="train", subject=subject, shared_only=shared_only)
+        val_loader = get_dataloader(config, modality, split="val", subject=subject, shared_only=shared_only)
         
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
     clip_dict = np.load(clip_cache_path)
@@ -96,7 +137,8 @@ def train(config_path, modality, subject, epochs_override=None, resume=False, re
             seq_len=seq_len,
             brain_embed_dim=config["model"]["projection_dim"],
             clip_dim=512,
-            tau_init=config["model"]["temperature_init"]
+            tau_init=config["model"]["temperature_init"],
+            modality=modality,
         ).to(device)
     
     print("Fine-tuning the entire model end-to-end (including the pretrained CBraMod backbone).")
@@ -114,9 +156,7 @@ def train(config_path, modality, subject, epochs_override=None, resume=False, re
     best_val_metric = 0.0
     save_dir = Path("checkpoints") / modality
     save_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_stem = f"{modality}_brainalign_sub{subject:02d}"
-    if shared_only:
-        checkpoint_stem += "_shared"
+    checkpoint_stem = checkpoint_stem_for(modality, subject, shared_only=shared_only)
     best_ckpt_path = save_dir / f"{checkpoint_stem}_best.pt"
     latest_ckpt_path = save_dir / f"{checkpoint_stem}_latest.pt"
     

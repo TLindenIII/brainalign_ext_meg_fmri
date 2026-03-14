@@ -162,14 +162,22 @@ class THINGSMEGDataset(Dataset):
         val_images = set(shuffled[train_end:val_end])
         test_images = set(shuffled[val_end:])
         
+        self.image_splits = {
+            "train": train_images,
+            "val": val_images,
+            "test": test_images,
+        }
+
         if self.split == "train":
             self.trials = [t for t in self.trials if t["image_id"] in train_images]
         elif self.split == "val":
             self.trials = [t for t in self.trials if t["image_id"] in val_images]
         elif self.split == "test":
             self.trials = [t for t in self.trials if t["image_id"] in test_images]
+        elif self.split == "all":
+            pass
         else:
-            raise ValueError("Split must be 'train', 'val', or 'test'")
+            raise ValueError("Split must be 'train', 'val', 'test', or 'all'")
             
         self._log(
             f"MEG Sub-{subject:02d} | {self.split}: {len(self.trials)} trials | "

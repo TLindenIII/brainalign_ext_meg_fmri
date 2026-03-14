@@ -96,6 +96,7 @@ def build_model(config, modality, sample_x, device):
             brain_embed_dim=config["model"]["projection_dim"],
             clip_dim=512,
             tau_init=config["model"]["temperature_init"],
+            modality=modality,
         )
 
     return model.to(device)

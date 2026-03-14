@@ -22,8 +22,17 @@ class BrainAlignModel(nn.Module):
     3. Learnable Temperature
     """
     
-    def __init__(self, in_channels=63, seq_len=100, brain_embed_dim=512, clip_dim=512, tau_init=0.07):
+    def __init__(
+        self,
+        in_channels=63,
+        seq_len=100,
+        brain_embed_dim=512,
+        clip_dim=512,
+        tau_init=0.07,
+        modality="eeg",
+    ):
         super().__init__()
+        self.modality = modality
         
         # Spatial channel alignment: mapping arbitrary channels to 63 (expected by pretrained CBraMod)
         self.in_channels = in_channels
@@ -64,13 +73,19 @@ class BrainAlignModel(nn.Module):
         # If the incoming seq_len != 200, we will interpolate it in the forward pass.
         self.seq_len = seq_len
         
-        # BrainAlign Spatial Region Projection Network (Section 3.1)
-        # Groups the 63 channels into 4 anatomical regions: Occipital, Parietal, Temporal, Other
-        self.region_projections = nn.ModuleList([
-            nn.Linear(200, 200) for _ in range(4)
-        ])
-        # Learnable softmax weights for region aggregation
-        self.region_weights = nn.Parameter(torch.ones(4))
+        # EEG follows the BrainAlign-style region aggregation.
+        # MEG uses a learned channel-attention pool instead of imposing EEG-like regions.
+        if self.modality == "meg":
+            self.channel_attention = nn.Sequential(
+                nn.Linear(200, 128),
+                nn.Tanh(),
+                nn.Linear(128, 1),
+            )
+        else:
+            self.region_projections = nn.ModuleList([
+                nn.Linear(200, 200) for _ in range(4)
+            ])
+            self.region_weights = nn.Parameter(torch.ones(4))
         
         # Projection Head (as defined in BrainAlign: Linear -> ReLU -> Linear)
         self.projection_head = nn.Sequential(
@@ -105,21 +120,26 @@ class BrainAlignModel(nn.Module):
         # Flatten patch dimension down to (B, 63, 200)
         z_brain = z_brain.squeeze(2)
         
-        # BrainAlign Spatial Region Segregation
-        # Partition 63 channels into 4 pseudo-anatomical regions of ~16 channels each
-        regions = [
-            z_brain[:, :16, :].mean(dim=1),     # Occipital
-            z_brain[:, 16:32, :].mean(dim=1),   # Parietal
-            z_brain[:, 32:48, :].mean(dim=1),   # Temporal
-            z_brain[:, 48:, :].mean(dim=1)      # Other
-        ]
-        
-        # Apply region-specific projections
-        projected_regions = [proj(reg) for proj, reg in zip(self.region_projections, regions)]
-        
-        # Aggregate via learnable softmax weights
-        weights = F.softmax(self.region_weights, dim=0)
-        z_brain = sum(w * reg for w, reg in zip(weights, projected_regions)) # (B, 200)
+        if self.modality == "meg":
+            channel_logits = self.channel_attention(z_brain).squeeze(-1)
+            channel_weights = F.softmax(channel_logits, dim=1)
+            z_brain = (channel_weights.unsqueeze(-1) * z_brain).sum(dim=1)
+        else:
+            # BrainAlign Spatial Region Segregation
+            # Partition 63 channels into 4 pseudo-anatomical regions of ~16 channels each
+            regions = [
+                z_brain[:, :16, :].mean(dim=1),     # Occipital
+                z_brain[:, 16:32, :].mean(dim=1),   # Parietal
+                z_brain[:, 32:48, :].mean(dim=1),   # Temporal
+                z_brain[:, 48:, :].mean(dim=1)      # Other
+            ]
+
+            # Apply region-specific projections
+            projected_regions = [proj(reg) for proj, reg in zip(self.region_projections, regions)]
+
+            # Aggregate via learnable softmax weights
+            weights = F.softmax(self.region_weights, dim=0)
+            z_brain = sum(w * reg for w, reg in zip(weights, projected_regions)) # (B, 200)
         
         # Project to CLIP space
         p_brain = self.projection_head(z_brain)
