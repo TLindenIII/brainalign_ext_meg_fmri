@@ -98,6 +98,7 @@ def evaluate_subject(model, test_loader, clip_dict, device, quiet=False):
     return e2i_acc_top1, e2i_acc_top5, e2i_acc_2way, i2e_acc_top1, i2e_acc_top5, i2e_acc_2way
 
 def main(subject):
+    np.random.seed(42)
     config = load_config()
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device} to evaluate tables")
@@ -115,16 +116,9 @@ def main(subject):
     subjects_to_eval = [subject] if subject is not None else range(1, 11)
     
     # We load a sample dataset just to extract the input dimensions
-    dataset1 = THINGSEEG2Dataset(eeg_dir=config["data"]["eeg_dir"], clip_cache_path=clip_cache_path, split="test", subject=1, quiet=True)
-    loader1 = DataLoader(dataset1, batch_size=1, shuffle=False)
-    batch = next(iter(loader1))
-    in_shape = batch["x"].shape[1:]
-    in_channels, seq_len = in_shape
-    
-    print(f"Beginning evaluation across {len(subjects_to_eval)} subjects...")
     for sub in subjects_to_eval:
         checkpoint_path = f"checkpoints/eeg/eeg_brainalign_sub{sub:02d}_best.pt"
-        
+
         if not os.path.exists(checkpoint_path):
             print(f"Warning: Checkpoint {checkpoint_path} not found. Skipping subject {sub:02d} and assigning 0.0 accuracy.")
             results_e2i_top1.append(0.0)
@@ -134,29 +128,35 @@ def main(subject):
             results_i2e_top5.append(0.0)
             results_i2e_2way.append(0.0)
             continue
-            
-        model = BrainAlignModel(
-            in_channels=in_channels,
-            seq_len=seq_len,
-            brain_embed_dim=512,
-            clip_dim=512,
-            tau_init=config["model"]["temperature_init"]
-        ).to(device)
-            
-        print(f"Loading checkpoint for subject {sub:02d}: {checkpoint_path}")
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-        model.load_state_dict(checkpoint["model_state_dict"])
-        
+
         dataset = THINGSEEG2Dataset(
-            eeg_dir=config["data"]["eeg_dir"], 
-            clip_cache_path=clip_cache_path, 
+            eeg_dir=config["data"]["eeg_dir"],
+            clip_cache_path=clip_cache_path,
             split="test",
             subject=sub,
             quiet=True
         )
         test_loader = DataLoader(dataset, batch_size=config["training"]["batch_size"]["eeg"], shuffle=False)
-            
-        e2i_acc_top1, e2i_acc_top5, e2i_acc_2way, i2e_acc_top1, i2e_acc_top5, i2e_acc_2way = evaluate_subject(model, test_loader, clip_dict, device, quiet=True)
+
+        sample = dataset[0]["x"]
+        in_channels, seq_len = sample.shape
+
+        model = BrainAlignModel(
+            in_channels=in_channels,
+            seq_len=seq_len,
+            brain_embed_dim=config["model"]["projection_dim"],
+            clip_dim=512,
+            tau_init=config["model"]["temperature_init"]
+        ).to(device)
+
+        print(f"Loading checkpoint for subject {sub:02d}: {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path, map_location=device)
+        model.load_state_dict(checkpoint["model_state_dict"])
+
+        e2i_acc_top1, e2i_acc_top5, e2i_acc_2way, i2e_acc_top1, i2e_acc_top5, i2e_acc_2way = evaluate_subject(
+            model, test_loader, clip_dict, device, quiet=True
+        )
+
         results_e2i_top1.append(e2i_acc_top1)
         results_e2i_top5.append(e2i_acc_top5)
         results_e2i_2way.append(e2i_acc_2way)
