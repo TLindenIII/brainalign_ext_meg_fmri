@@ -18,55 +18,76 @@ class THINGSMEGDataset(Dataset):
     - Event codes map to the global 1-16540 image stimuli IDs.
     """
     
-    def __init__(self, meg_dir, clip_cache_path, split="train", subject=1, transform=None):
+    def __init__(
+        self,
+        meg_dir,
+        clip_cache_path,
+        split="train",
+        subject=1,
+        transform=None,
+        shared_only=False,
+        quiet=False,
+    ):
         self.meg_dir = Path(meg_dir)
         self.split = split
         self.transform = transform
         self.subject = subject
+        self.shared_only = shared_only
+        self.quiet = quiet
+        self._log = print if not self.quiet else (lambda *args, **kwargs: None)
         
         # Load CLIP cache
-        print(f"Loading CLIP cache from {clip_cache_path}")
+        self._log(f"Loading CLIP cache from {clip_cache_path}")
         self.clip_cache = np.load(clip_cache_path)
         
         # Load shared cross-modal image intersection
         self.shared_images = None
         shared_path = Path("data/shared_images.txt")
-        if shared_path.exists():
+        if self.shared_only and shared_path.exists():
             with open(shared_path, "r") as f:
                 self.shared_images = set([line.strip() for line in f.readlines()])
-                print(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
+                self._log(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
                 
         # To strictly map MNE event integers to global IDs as strings
         id_to_string_map = {}
+        max_valid_event_id = None
         metadata_path = Path("data/things-eeg2/stimuli/image_metadata.npy")
         if metadata_path.exists():
             metadata = np.load(metadata_path, allow_pickle=True).item()
             train_files = [Path(f).stem for f in metadata["train_img_files"]]
             test_files = [Path(f).stem for f in metadata["test_img_files"]]
             all_files = train_files + test_files
-            id_to_string_map = {str(i+1): file_stem for i, file_stem in enumerate(all_files)}
+            id_to_string_map = {i + 1: file_stem for i, file_stem in enumerate(all_files)}
+            max_valid_event_id = len(all_files)
                 
         # Discover all preprocessed epoch files for this subject.
-        # Format Example: preprocessed_P1-epo.fif (Sub 1 may have multiple splits like -1, -2)
+        # Prefer the merged subject file when present. Some folders also contain split
+        # shards; globbing both the merged file and shards risks double-counting epochs.
         prep_dir = self.meg_dir / "derivatives" / "preprocessed"
         if not prep_dir.exists():
             raise FileNotFoundError(f"MEG preprocessed directory not found: {prep_dir}")
-            
-        subject_files = list(prep_dir.glob(f"preprocessed_P{subject}-epo*.fif"))
+
+        merged_file = prep_dir / f"preprocessed_P{subject}-epo.fif"
+        if merged_file.exists():
+            subject_files = [merged_file]
+        else:
+            subject_files = list(prep_dir.glob(f"preprocessed_P{subject}-epo-*.fif"))
+
         if not subject_files:
             raise FileNotFoundError(f"No .fif files found for subject {subject} in {prep_dir}")
         subject_files.sort()  # ensure deterministic ordering
             
-        print(f"Loading {len(subject_files)} preprocessed epoch files for Subject {subject}...")
+        self._log(f"Loading {len(subject_files)} preprocessed epoch files for Subject {subject}...")
         
         # We will preload everything into RAM to speed up training drastically.
         # A single subject's MEG data is typically ~6GB total.
         all_epochs_data = [] # List of numpy arrays
         self.trials = []
         global_idx = 0
+        skipped_unmapped_events = 0
         
         for epo_file in subject_files:
-            print(f"Reading {epo_file.name}...")
+            self._log(f"Reading {epo_file.name}...")
             epochs = mne.read_epochs(str(epo_file), preload=True, verbose='error')
             
             # Modality Conversion Paper Alignment:
@@ -84,26 +105,35 @@ class THINGSMEGDataset(Dataset):
             events = epochs.events
             
             for i, event_row in enumerate(events):
+                data_row_idx = global_idx
+                global_idx += 1
                 event_id = int(event_row[2])
                 
                 # Check mapping
                 if id_to_string_map:
-                    image_id = id_to_string_map.get(str(event_id), str(event_id))
+                    image_id = id_to_string_map.get(event_id)
+                    if image_id is None:
+                        skipped_unmapped_events += 1
+                        continue
                 else:
                     image_id = str(event_id)
                     
                 self.trials.append({
-                    "global_idx": global_idx, # Map back to the concatenated numpy array
+                    "global_idx": data_row_idx, # Map back to the concatenated numpy array
                     "image_id": image_id,
                     "event_id": event_id
                 })
-                global_idx += 1
                 
         # Concatenate MEG continuous arrays into single RAM block
-        print("Concatenating MEG epochs into RAM...")
+        self._log("Concatenating MEG epochs into RAM...")
         self.meg_data = np.concatenate(all_epochs_data, axis=0)
         self.n_channels, self.seq_len = self.meg_data.shape[1], self.meg_data.shape[2]
-        print(f"Preloaded: {self.meg_data.shape} ({self.meg_data.nbytes / 1e6:.0f} MB RAM)")
+        self._log(f"Preloaded: {self.meg_data.shape} ({self.meg_data.nbytes / 1e6:.0f} MB RAM)")
+        if max_valid_event_id is not None and skipped_unmapped_events > 0:
+            self._log(
+                f"Skipped {skipped_unmapped_events} unmapped MEG events "
+                f"(outside 1..{max_valid_event_id}, e.g. button-press markers)."
+            )
         
         # Optional: Normalize channels to Z-score across time standard practice
         # self.meg_data = (self.meg_data - self.meg_data.mean(axis=2, keepdims=True)) / (self.meg_data.std(axis=2, keepdims=True) + 1e-6)
@@ -111,9 +141,16 @@ class THINGSMEGDataset(Dataset):
         # Enforce intersection filtering
         if self.shared_images:
             self.trials = [t for t in self.trials if t["image_id"] in self.shared_images]
+            self._log(f"Retained {len(self.trials)} MEG trials after shared-image filtering")
             
         # Split logic: Seeded 3-way split by fundamental Image ID to avoid data leak.
         unique_images = sorted(list(set(t["image_id"] for t in self.trials)))
+        if not unique_images:
+            raise ValueError(
+                "No MEG image IDs remain after preprocessing/filtering. "
+                "Check event mapping and shared-image settings."
+            )
+
         np.random.seed(42)  # Critical for split alignment across MEG/fMRI
         shuffled = unique_images.copy()
         np.random.shuffle(shuffled)
@@ -134,7 +171,10 @@ class THINGSMEGDataset(Dataset):
         else:
             raise ValueError("Split must be 'train', 'val', or 'test'")
             
-        print(f"MEG Sub-{subject:02d} | {self.split}: {len(self.trials)} trials | Channels: {self.n_channels}, SeqLen: {self.seq_len}")
+        self._log(
+            f"MEG Sub-{subject:02d} | {self.split}: {len(self.trials)} trials | "
+            f"Channels: {self.n_channels}, SeqLen: {self.seq_len}"
+        )
         
     def __len__(self):
         return len(self.trials)
@@ -150,10 +190,10 @@ class THINGSMEGDataset(Dataset):
         if self.transform:
             x = self.transform(x)
             
-        if hasattr(self, 'clip_cache') and image_id in self.clip_cache.files:
-            y_clip = torch.tensor(self.clip_cache[image_id], dtype=torch.float32)
-        else:
-            y_clip = torch.zeros(512, dtype=torch.float32)
+        if image_id not in self.clip_cache.files:
+            raise KeyError(f"MEG image_id '{image_id}' not found in CLIP cache")
+
+        y_clip = torch.tensor(self.clip_cache[image_id], dtype=torch.float32)
             
         return {
             "x": x,

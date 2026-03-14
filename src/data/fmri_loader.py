@@ -27,22 +27,34 @@ class THINGSfMRIDataset(Dataset):
     the most variable voxels concentrates the visual signal.
     """
     
-    def __init__(self, fmri_dir, clip_cache_path, split="train", subject=1, transform=None):
+    def __init__(
+        self,
+        fmri_dir,
+        clip_cache_path,
+        split="train",
+        subject=1,
+        transform=None,
+        shared_only=False,
+        quiet=False,
+    ):
         self.fmri_dir = Path(fmri_dir)
         self.split = split
         self.transform = transform
         self.subject = subject
+        self.shared_only = shared_only
+        self.quiet = quiet
+        self._log = print if not self.quiet else (lambda *args, **kwargs: None)
         sub_str = f"sub-{subject:02d}"
         
-        print(f"Loading CLIP cache from {clip_cache_path}")
+        self._log(f"Loading CLIP cache from {clip_cache_path}")
         self.clip_cache = np.load(clip_cache_path)
         
         self.shared_images = None
         shared_path = Path("data/shared_images.txt")
-        if shared_path.exists():
+        if self.shared_only and shared_path.exists():
             with open(shared_path, "r") as f:
                 self.shared_images = set([line.strip() for line in f.readlines()])
-                print(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
+                self._log(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
                 
         # ---- Load the stimulus metadata TSV ----
         beta_dir = self.fmri_dir / "derivatives" / "ICA-betas" / sub_str / "voxel-metadata"
@@ -52,21 +64,21 @@ class THINGSfMRIDataset(Dataset):
             raise FileNotFoundError(f"Stimulus metadata not found: {metadata_tsv}")
             
         df = pd.read_csv(metadata_tsv, sep=',', encoding='utf-8', on_bad_lines='skip', engine='python')
-        print(f"Loaded {len(df)} trials from {metadata_tsv.name}")
+        self._log(f"Loaded {len(df)} trials from {metadata_tsv.name}")
         
         # ---- Load HDF5, select top-K voxels, preload into RAM ----
         h5_path = beta_dir / f"{sub_str}_task-things_voxel-wise-responses.h5"
         if not h5_path.exists():
             raise FileNotFoundError(f"Voxel data not found: {h5_path}")
         
-        print(f"Loading voxel data from {h5_path.name}...")
+        self._log(f"Loading voxel data from {h5_path.name}...")
         with h5py.File(str(h5_path), 'r') as f:
             full_data = f['ResponseData']['block0_values']  # (n_voxels, n_trials)
             n_voxels_full, n_trials_h5 = full_data.shape
-            print(f"Full HDF5: {n_voxels_full} voxels × {n_trials_h5} trials")
+            self._log(f"Full HDF5: {n_voxels_full} voxels × {n_trials_h5} trials")
             
             # Select top-K voxels by variance (computed on a subsample for speed)
-            print(f"Computing per-voxel variance for top-{N_TOP_VOXELS} selection...")
+            self._log(f"Computing per-voxel variance for top-{N_TOP_VOXELS} selection...")
             n_sample = min(3000, n_trials_h5)
             sample_idx = np.linspace(0, n_trials_h5 - 1, n_sample, dtype=int)
             sample_data = full_data[:, sample_idx]
@@ -76,14 +88,14 @@ class THINGSfMRIDataset(Dataset):
             top_k_indices.sort()  # Keep spatial order for consistency
             
             var_retained = voxel_var[top_k_indices].sum() / voxel_var.sum() * 100
-            print(f"Selected {N_TOP_VOXELS} voxels ({var_retained:.1f}% of total variance)")
+            self._log(f"Selected {N_TOP_VOXELS} voxels ({var_retained:.1f}% of total variance)")
             
             # Preload selected voxels into RAM — (n_trials, n_selected_voxels)
-            print("Preloading selected voxels into RAM...")
+            self._log("Preloading selected voxels into RAM...")
             self.voxel_data = full_data[top_k_indices, :].T.astype(np.float32)  # (n_trials, N_TOP_VOXELS)
         
         self.n_voxels = N_TOP_VOXELS
-        print(f"Preloaded: {self.voxel_data.shape} ({self.voxel_data.nbytes / 1e6:.0f} MB in RAM)")
+        self._log(f"Preloaded: {self.voxel_data.shape} ({self.voxel_data.nbytes / 1e6:.0f} MB in RAM)")
         
         # ---- Compute global normalization stats (per-voxel mean/std across all trials) ----
         self.voxel_mean = self.voxel_data.mean(axis=0)  # (N_TOP_VOXELS,)
@@ -113,6 +125,12 @@ class THINGSfMRIDataset(Dataset):
                 
         # ---- 80/10/10 split on unique image IDs (seeded for cross-modal consistency) ----
         unique_images = sorted(list(set(t["image_id"] for t in self.trials)))
+        if not unique_images:
+            raise ValueError(
+                "No fMRI image IDs remain after preprocessing/filtering. "
+                "Check shared-image settings and stimulus metadata."
+            )
+
         np.random.seed(42)
         shuffled = unique_images.copy()
         np.random.shuffle(shuffled)
@@ -133,7 +151,10 @@ class THINGSfMRIDataset(Dataset):
         else:
             raise ValueError("Split must be 'train', 'val', or 'test'")
             
-        print(f"fMRI {sub_str} | {self.split}: {len(self.trials)} trials | {self.n_voxels} selected voxels")
+        self._log(
+            f"fMRI {sub_str} | {self.split}: {len(self.trials)} trials | "
+            f"{self.n_voxels} selected voxels"
+        )
         
     def __len__(self):
         return len(self.trials)
@@ -152,10 +173,10 @@ class THINGSfMRIDataset(Dataset):
         if self.transform:
             x = self.transform(x)
             
-        if hasattr(self, 'clip_cache') and image_id in self.clip_cache.files:
-            y_clip = torch.tensor(self.clip_cache[image_id], dtype=torch.float32)
-        else:
-            y_clip = torch.zeros(512, dtype=torch.float32)
+        if image_id not in self.clip_cache.files:
+            raise KeyError(f"fMRI image_id '{image_id}' not found in CLIP cache")
+
+        y_clip = torch.tensor(self.clip_cache[image_id], dtype=torch.float32)
             
         return {
             "x": x,

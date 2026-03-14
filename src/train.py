@@ -19,32 +19,35 @@ def load_config(config_path="config.yaml"):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
-def get_dataloader(config, modality, split, subject=1):
+def get_dataloader(config, modality, split, subject=1, shared_only=False):
     """
     Returns the appropriate DataLoader for the given modality.
     """
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
-    batch_size = config["training"]["batch_size"]
     
     if modality == "eeg":
         dataset = THINGSEEG2Dataset(
             eeg_dir=config["data"]["eeg_dir"],
             clip_cache_path=clip_cache_path,
             split=split,
-            subject=subject
+            subject=subject,
+            shared_only=shared_only,
         )
     elif modality == "meg":
         dataset = THINGSMEGDataset(
             meg_dir=config["data"]["meg_dir"],
             clip_cache_path=clip_cache_path,
-            split=split
+            split=split,
+            subject=subject,
+            shared_only=shared_only,
         )
     elif modality == "fmri":
         dataset = THINGSfMRIDataset(
             fmri_dir=config["data"]["fmri_dir"],
             clip_cache_path=clip_cache_path,
             split=split,
-            subject=subject
+            subject=subject,
+            shared_only=shared_only,
         )
     else:
         raise ValueError(f"Unknown modality: {modality}")
@@ -52,15 +55,16 @@ def get_dataloader(config, modality, split, subject=1):
     batch_size = config["training"]["batch_size"][modality]
     return DataLoader(dataset, batch_size=batch_size, shuffle=(split=="train"))
 
-def train(config_path, modality, subject, epochs_override=None, resume=False, resume_best=False):
+def train(config_path, modality, subject, epochs_override=None, resume=False, resume_best=False, shared_only=False):
     config = load_config(config_path)
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"Using device: {device} for modality {modality.upper()}, subject {subject:02d}")
+    scope_label = "shared" if shared_only else "full"
+    print(f"Using device: {device} for modality {modality.upper()}, subject {subject:02d} ({scope_label})")
     
     # Setup data
     print("Initializing dataloader...")
-    train_loader = get_dataloader(config, modality, split="train", subject=subject)
-    val_loader = get_dataloader(config, modality, split="val", subject=subject)
+    train_loader = get_dataloader(config, modality, split="train", subject=subject, shared_only=shared_only)
+    val_loader = get_dataloader(config, modality, split="val", subject=subject, shared_only=shared_only)
         
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
     clip_dict = np.load(clip_cache_path)
@@ -110,8 +114,11 @@ def train(config_path, modality, subject, epochs_override=None, resume=False, re
     best_val_metric = 0.0
     save_dir = Path("checkpoints") / modality
     save_dir.mkdir(parents=True, exist_ok=True)
-    best_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_best.pt"
-    latest_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_latest.pt"
+    checkpoint_stem = f"{modality}_brainalign_sub{subject:02d}"
+    if shared_only:
+        checkpoint_stem += "_shared"
+    best_ckpt_path = save_dir / f"{checkpoint_stem}_best.pt"
+    latest_ckpt_path = save_dir / f"{checkpoint_stem}_latest.pt"
     
     start_epoch = 0
     if resume or resume_best:
@@ -196,7 +203,6 @@ def train(config_path, modality, subject, epochs_override=None, resume=False, re
             # Only save the best checkpoint
             if current_metric > best_val_metric:
                 best_val_metric = current_metric
-                best_ckpt_path = save_dir / f"{modality}_brainalign_sub{subject:02d}_best.pt"
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
@@ -226,6 +232,11 @@ if __name__ == "__main__":
     parser.add_argument("--epochs", type=int, default=None, help="Override the number of epochs (default: config.yaml value)")
     parser.add_argument("--resume", action="store_true", help="Resume from the latest checkpoint if it exists")
     parser.add_argument("--resume-best", action="store_true", help="Resume from the best checkpoint instead of the latest")
+    parser.add_argument(
+        "--shared-only",
+        action="store_true",
+        help="Restrict MEG/fMRI training to the shared image intersection used for conversion",
+    )
     args = parser.parse_args()
     
-    train(args.config, args.modality, args.subject, args.epochs, args.resume, args.resume_best)
+    train(args.config, args.modality, args.subject, args.epochs, args.resume, args.resume_best, args.shared_only)

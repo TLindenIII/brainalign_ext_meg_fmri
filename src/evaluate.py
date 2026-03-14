@@ -1,160 +1,100 @@
-import os
 import argparse
-import yaml
-import torch
-import numpy as np
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 from pathlib import Path
-from sklearn.metrics.pairwise import cosine_similarity
 
-# Local imports
-from src.models.contrastive_model import BrainAlignModel
-from src.data.eeg_loader import THINGSEEG2Dataset
-from src.data.meg_loader import THINGSMEGDataset
-from src.data.fmri_loader import THINGSfMRIDataset
+import numpy as np
+import torch
 
-def load_config(config_path="config.yaml"):
-    with open(config_path, "r") as f:
-        return yaml.safe_load(f)
+from src.eval_utils import (
+    build_model,
+    clip_embeddings_for_ids,
+    collect_modality_embeddings,
+    compute_bidirectional_metrics,
+    create_dataloader,
+    load_checkpoint,
+    load_clip_cache,
+    load_config,
+)
+
 
 def evaluate(model, test_loader, clip_dict, device):
-    model.eval()
-    
-    # 1. Prepare candidates
-    if hasattr(test_loader.dataset, 'files'):
-        unique_test_ids = list(set([Path(f).stem for f in test_loader.dataset.files]))
-    else:
-        unique_test_ids = list(set([t["image_id"] for t in test_loader.dataset.trials]))
-    
-    test_candidates = []
-    for cid in unique_test_ids:
-        test_candidates.append(clip_dict[cid])
-        
-    test_candidates = np.array(test_candidates)
-    
-    # Accumulate projected brain embeddings per image ID
-    target_p_brains = {tid: [] for tid in unique_test_ids}
-    
-    with torch.no_grad():
-        for batch in tqdm(test_loader, desc="Evaluating"):
-            x_brain = batch["x"].to(device)
-            if x_brain.dim() == 2:
-                x_brain = x_brain.unsqueeze(1)
-                
-            id_targets = batch['image_id']
-            p_brain = model(x_brain)
-            
-            # Predict
-            Y_pred = p_brain.cpu().numpy()
-            
-            for i, true_id in enumerate(id_targets):
-                target_p_brains[true_id].append(Y_pred[i])
-                
-    # Average the projected representations per image condition as specified in the paper
-    top1, top5, total = 0, 0, 0
-    total_two_way = 0.0
-    
-    # We will compute 2-way accuracy by comparing the true similarity against all distractor similarities
-    num_distractors = len(test_candidates) - 1
-    
-    for true_id, p_brain_trials in target_p_brains.items():
-        if len(p_brain_trials) == 0:
-            continue
-            
-        # Average the representation for this true_id
-        avg_p_brain = np.mean(p_brain_trials, axis=0, keepdims=True)
-        
-        # Distance against all candidates
-        sims = cosine_similarity(avg_p_brain, test_candidates)[0]
-        sorted_indices = np.argsort(sims)[::-1]
-        
-        best_5 = [unique_test_ids[idx] for idx in sorted_indices[:5]]
-        if true_id == best_5[0]: top1 += 1
-        if true_id in best_5: top5 += 1
-        
-        # Compute 2-way accuracy: proportion of distractors that have lower similarity than the true image
-        true_idx = unique_test_ids.index(true_id)
-        true_sim = sims[true_idx]
-        
-        if num_distractors > 0:
-            # wins against distractors (note that true_sim > true_sim is False, so we don't accidentally count the true image)
-            wins = (true_sim > sims).sum()
-            total_two_way += (wins / num_distractors)
-            
-        total += 1
-                
-    return {
-        "top1": (top1/total)*100 if total > 0 else 0,
-        "top5": (top5/total)*100 if total > 0 else 0,
-        "two_way": (total_two_way/total)*100 if total > 0 else 0
-    }
+    modality_embeddings = collect_modality_embeddings(model, test_loader, device)
+    image_ids = sorted(modality_embeddings)
+    modality_matrix = np.stack([modality_embeddings[image_id] for image_id in image_ids], axis=0).astype(np.float32)
+    clip_matrix = clip_embeddings_for_ids(clip_dict, image_ids)
+
+    metrics = compute_bidirectional_metrics(modality_matrix, clip_matrix)
+    flat_metrics = dict(metrics["forward"])
+    flat_metrics["modality_to_image"] = metrics["forward"]
+    flat_metrics["image_to_modality"] = metrics["reverse"]
+    flat_metrics["candidate_count"] = metrics["candidate_count"]
+    return flat_metrics
 
 
-def main(modality, checkpoint_path):
-    config = load_config()
+def main(config_path, modality, checkpoint_path, subject, split, shared_only):
+    config = load_config(config_path)
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    print(f"Using device: {device} to evaluate {modality}")
-    
-    clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
-    clip_dict = np.load(clip_cache_path)
-    
-    # Setup Data
-    if modality == "eeg":
-        dataset = THINGSEEG2Dataset(eeg_dir=config["data"]["eeg_dir"], clip_cache_path=clip_cache_path, split="test")
-    elif modality == "meg":
-        dataset = THINGSMEGDataset(meg_dir=config["data"]["meg_dir"], clip_cache_path=clip_cache_path, split="test")
-    elif modality == "fmri":
-        dataset = THINGSfMRIDataset(fmri_dir=config["data"]["fmri_dir"], clip_cache_path=clip_cache_path, split="test")
-        
-    test_loader = DataLoader(dataset, batch_size=config["training"]["batch_size"], shuffle=False)
-    
-    first_batch = next(iter(test_loader))
-    in_shape = first_batch["x"].shape[1:] 
-    
-    if len(in_shape) == 2:
-        in_channels, seq_len = in_shape
-    elif len(in_shape) == 1:
-        in_channels = 1
-        seq_len = in_shape[0]
-        
-    model = BrainAlignModel(
-        in_channels=in_channels,
-        seq_len=seq_len,
-        brain_embed_dim=512, # Restore to match the 512x512 projection checkpoints from the frozen runs
-        clip_dim=512,
-        tau_init=config["model"]["temperature_init"]
-    ).to(device)
-    
+    print(f"Using device: {device} to evaluate {modality.upper()} subject {subject:02d}")
+
+    clip_dict = load_clip_cache(config)
+    test_loader = create_dataloader(
+        config,
+        modality,
+        split,
+        subject=subject,
+        shared_only=shared_only,
+        quiet=False,
+        shuffle=False,
+    )
+
+    sample_x = test_loader.dataset[0]["x"]
+    model = build_model(config, modality, sample_x, device)
+
     print(f"Loading checkpoint: {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
-    if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
-        model.load_state_dict(checkpoint["model_state_dict"])
-    else:
-        model.load_state_dict(checkpoint)
-        
+    load_checkpoint(model, checkpoint_path, device)
+
     print("Beginning retrieval evaluation...")
     metrics = evaluate(model, test_loader, clip_dict, device)
-    
-    print(f"\n--- Evaluation Results ({modality.upper()}) ---")
-    out_lines = [
-        f"--- Evaluation Results ({modality.upper()}) ---",
+
+    lines = [
+        f"--- Evaluation Results ({modality.upper()} / subject {subject:02d}) ---",
         f"Checkpoint: {checkpoint_path}",
-        f"Top-1 Retrieval: {metrics['top1']:.2f}%",
-        f"Top-5 Retrieval: {metrics['top5']:.2f}%",
-        f"2-Way Accuracy:  {metrics['two_way']:.2f}%"
+        f"Split: {split}",
+        f"Shared-only images: {shared_only}",
+        f"Candidate images: {metrics['candidate_count']}",
+        "",
+        "Modality -> Image",
+        f"Top-1 Retrieval: {metrics['modality_to_image']['top1']:.2f}%",
+        f"Top-5 Retrieval: {metrics['modality_to_image']['top5']:.2f}%",
+        f"CLIP 2-Way:      {metrics['modality_to_image']['two_way']:.2f}%",
+        "",
+        "Image -> Modality",
+        f"Top-1 Retrieval: {metrics['image_to_modality']['top1']:.2f}%",
+        f"Top-5 Retrieval: {metrics['image_to_modality']['top5']:.2f}%",
+        f"CLIP 2-Way:      {metrics['image_to_modality']['two_way']:.2f}%",
     ]
-    for line in out_lines:
-        print(line)
-        
+
+    print("\n".join(lines))
+
     results_dir = Path("results") / modality
     results_dir.mkdir(parents=True, exist_ok=True)
-    with open(results_dir / "evaluation_results.txt", "w") as f:
-        f.write("\n".join(out_lines))
+    scope = "shared" if shared_only else "full"
+    out_path = results_dir / f"evaluation_sub{subject:02d}_{split}_{scope}.txt"
+    with open(out_path, "w") as handle:
+        handle.write("\n".join(lines))
+    print(f"Saved results to {out_path}")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--modality", type=str, required=True)
-    parser.add_argument("--ckpt", type=str, required=True)
+    parser = argparse.ArgumentParser(description="Evaluate modality/image retrieval against CLIP")
+    parser.add_argument("--config", type=str, default="config.yaml", help="Path to config file")
+    parser.add_argument("--modality", type=str, required=True, choices=["eeg", "meg", "fmri"])
+    parser.add_argument("--ckpt", type=str, required=True, help="Checkpoint to evaluate")
+    parser.add_argument("--subject", type=int, default=1, help="Subject ID to evaluate")
+    parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
+    parser.add_argument(
+        "--shared-only",
+        action="store_true",
+        help="Restrict MEG/fMRI evaluation to the shared image intersection",
+    )
     args = parser.parse_args()
-    main(args.modality, args.ckpt)
+    main(args.config, args.modality, args.ckpt, args.subject, args.split, args.shared_only)

@@ -1,19 +1,58 @@
 param (
     [string]$Modality = "eeg",
     [string]$Epochs = "",
-    [switch]$Resume
+    [switch]$Resume,
+    [switch]$SharedOnly
 )
 
 $ModalityUpper = $Modality.ToUpper()
 Write-Host "Starting sequential multi-subject training for THINGS-${ModalityUpper}..."
 
-for ($i = 1; $i -le 10; $i++) {
+function Get-SubjectIds {
+    param ([string]$Mode)
+
+    switch ($Mode) {
+        "eeg" {
+            return Get-ChildItem "data\things-eeg2\preprocessed" -Directory -Filter "sub-*" |
+                ForEach-Object { [int]($_.Name -replace "^sub-", "") } |
+                Sort-Object
+        }
+        "meg" {
+            return Get-ChildItem "data\things-meg-ds004212\derivatives\preprocessed" -File -Filter "preprocessed_P*-epo*.fif" |
+                ForEach-Object {
+                    if ($_.Name -match "preprocessed_P(\d+)-epo(?:-\d+)?\.fif") {
+                        [int]$Matches[1]
+                    }
+                } |
+                Sort-Object -Unique
+        }
+        "fmri" {
+            return Get-ChildItem "data\things-fmri-ds004192\derivatives\ICA-betas" -Directory -Filter "sub-*" |
+                ForEach-Object { [int]($_.Name -replace "^sub-", "") } |
+                Sort-Object
+        }
+        default {
+            throw "Unknown modality '$Mode'"
+        }
+    }
+}
+
+$SubjectIds = @(Get-SubjectIds $Modality)
+if ($SubjectIds.Count -eq 0) {
+    Write-Host "No local subjects found for modality '$Modality'."
+    exit 1
+}
+
+$CheckpointSuffix = if ($SharedOnly) { "_shared" } else { "" }
+
+for ($idx = 0; $idx -lt $SubjectIds.Count; $idx++) {
+    $i = $SubjectIds[$idx]
     Write-Host "============================================================"
-    Write-Host "Training Subject $i / 10 (${ModalityUpper})"
+    Write-Host "Training Subject $i / $($SubjectIds.Count) (${ModalityUpper})"
     Write-Host "============================================================"
     
     $SubId = "{0:D2}" -f $i
-    $CheckpointPath = "checkpoints\${Modality}\${Modality}_brainalign_sub${SubId}_best.pt"
+    $CheckpointPath = "checkpoints\${Modality}\${Modality}_brainalign_sub${SubId}${CheckpointSuffix}_best.pt"
     
     if ((Test-Path $CheckpointPath) -and -not $Resume) {
         Write-Host "Checkpoint for Subject $i already exists. Skipping training..."
@@ -23,8 +62,9 @@ for ($i = 1; $i -le 10; $i++) {
     
     $EpochArg = if ($Epochs) { "--epochs", $Epochs } else { @() }
     $ResumeArg = if ($Resume) { "--resume" } else { @() }
+    $SharedArg = if ($SharedOnly) { "--shared-only" } else { @() }
     
-    & ".\venv\Scripts\python.exe" -m src.train --modality $Modality --subject $i @EpochArg @ResumeArg
+    & ".\venv\Scripts\python.exe" -m src.train --modality $Modality --subject $i @EpochArg @ResumeArg @SharedArg
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Training failed for Subject $i. Exiting."
@@ -36,7 +76,13 @@ for ($i = 1; $i -le 10; $i++) {
 }
 
 Write-Host "============================================================"
-Write-Host "All 10 subjects have been trained! Automatically generating the final averaged SOTA matrices..."
+Write-Host "All discovered ${ModalityUpper} subjects have been trained."
 Write-Host "============================================================"
 
-& ".\venv\Scripts\python.exe" -m src.evaluate_table
+if (($Modality -eq "eeg") -and -not $SharedOnly) {
+    Write-Host "Automatically generating the EEG summary table..."
+    & ".\venv\Scripts\python.exe" "scripts\evaluate_eeg_table.py"
+} else {
+    Write-Host "Skipping automatic summary for ${ModalityUpper}."
+    Write-Host "Use scripts/evaluate_retrieval.py for modality-vs-image metrics and scripts/evaluate_conversion.py for shared-image conversion."
+}

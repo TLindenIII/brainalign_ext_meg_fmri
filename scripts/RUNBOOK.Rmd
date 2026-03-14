@@ -1,0 +1,204 @@
+---
+title: "BrainAlign Runbook"
+output: github_document
+---
+
+# Purpose
+
+This runbook explains the order to run the consolidated scripts on the training PC.
+
+All user-facing shell / PowerShell / Python entry points now live in `scripts/`.
+The notebooks remain for exploratory analysis only.
+
+# One-Time Setup
+
+From the repo root:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+# Optional Sanity Checks
+
+These are lightweight and safe to run before training:
+
+```bash
+python scripts/test_model.py
+python scripts/print_shapes.py
+python scripts/print_fmri_struct.py
+python scripts/test_meg_metadata.py
+python scripts/test_pd.py
+```
+
+Windows PowerShell uses the same Python commands after activation.
+
+# Recommended Run Order On The PC
+
+## 1. Verify the shared image list
+
+If `data/shared_images.txt` is already correct, keep it. If you need to regenerate it, run:
+
+```bash
+python scripts/build_shared_images.py
+```
+
+This script ignores unmapped MEG event IDs such as button-press artifacts and rewrites `data/shared_images.txt`.
+
+## 2. Train or resume full-data retrieval models
+
+These runs are for modality-to-image and image-to-modality retrieval.
+
+### MEG full-data retrieval
+
+```bash
+./scripts/train_all_subjects.sh --modality meg --resume
+```
+
+### fMRI full-data retrieval
+
+```bash
+./scripts/train_all_subjects.sh --modality fmri --resume
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\train_all_subjects.ps1 -Modality meg -Resume
+.\scripts\train_all_subjects.ps1 -Modality fmri -Resume
+```
+
+## 3. Evaluate full-data retrieval models
+
+Run this after the full-data checkpoints exist.
+
+### MEG retrieval
+
+Example for subject 1:
+
+```bash
+python scripts/evaluate_retrieval.py \
+  --modality meg \
+  --subject 1 \
+  --ckpt checkpoints/meg/meg_brainalign_sub01_best.pt \
+  --split test
+```
+
+### fMRI retrieval
+
+Example for subject 3:
+
+```bash
+python scripts/evaluate_retrieval.py \
+  --modality fmri \
+  --subject 3 \
+  --ckpt checkpoints/fmri/fmri_brainalign_sub03_best.pt \
+  --split test
+```
+
+Outputs are written under `results/meg/` and `results/fmri/`.
+
+If you are using PowerShell on the PC, the same `python scripts/...` evaluation commands work after activating the virtual environment.
+
+## 4. Train or resume shared-only conversion models
+
+These runs are only for cross-modality conversion on the shared image intersection.
+
+### MEG shared-only conversion model
+
+```bash
+./scripts/train_all_subjects.sh --modality meg --shared-only --resume
+```
+
+### fMRI shared-only conversion model
+
+```bash
+./scripts/train_all_subjects.sh --modality fmri --shared-only --resume
+```
+
+Windows PowerShell:
+
+```powershell
+.\scripts\train_all_subjects.ps1 -Modality meg -SharedOnly -Resume
+.\scripts\train_all_subjects.ps1 -Modality fmri -SharedOnly -Resume
+```
+
+Shared-only checkpoints are saved with `_shared` in the filename so they do not overwrite the full-data retrieval checkpoints.
+
+## 5. Evaluate shared-only retrieval models
+
+This is optional but useful to confirm the shared-subset models are healthy before conversion.
+
+```bash
+python scripts/evaluate_retrieval.py \
+  --modality meg \
+  --subject 1 \
+  --shared-only \
+  --ckpt checkpoints/meg/meg_brainalign_sub01_shared_best.pt \
+  --split test
+```
+
+```bash
+python scripts/evaluate_retrieval.py \
+  --modality fmri \
+  --subject 3 \
+  --shared-only \
+  --ckpt checkpoints/fmri/fmri_brainalign_sub03_shared_best.pt \
+  --split test
+```
+
+## 6. Run modality-conversion evaluation
+
+Once both shared-only checkpoints exist:
+
+```bash
+python scripts/evaluate_conversion.py \
+  --source-modality meg \
+  --source-subject 1 \
+  --source-ckpt checkpoints/meg/meg_brainalign_sub01_shared_best.pt \
+  --target-modality fmri \
+  --target-subject 3 \
+  --target-ckpt checkpoints/fmri/fmri_brainalign_sub03_shared_best.pt \
+  --split test
+```
+
+This writes results under `results/conversion/`.
+
+# Suggested PC Execution Order
+
+Run these in this order:
+
+1. `python scripts/test_model.py`
+2. `python scripts/print_shapes.py`
+3. `python scripts/build_shared_images.py` if `data/shared_images.txt` needs to be refreshed
+4. `./scripts/train_all_subjects.sh --modality meg --resume`
+5. `./scripts/train_all_subjects.sh --modality fmri --resume`
+6. `python scripts/evaluate_retrieval.py --modality meg --subject <id> --ckpt checkpoints/meg/meg_brainalign_sub<id>_best.pt --split test`
+7. `python scripts/evaluate_retrieval.py --modality fmri --subject <id> --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_best.pt --split test`
+8. `./scripts/train_all_subjects.sh --modality meg --shared-only --resume`
+9. `./scripts/train_all_subjects.sh --modality fmri --shared-only --resume`
+10. `python scripts/evaluate_retrieval.py --modality meg --subject <id> --shared-only --ckpt checkpoints/meg/meg_brainalign_sub<id>_shared_best.pt --split test`
+11. `python scripts/evaluate_retrieval.py --modality fmri --subject <id> --shared-only --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_shared_best.pt --split test`
+12. `python scripts/evaluate_conversion.py --source-modality meg --source-subject <meg_id> --source-ckpt checkpoints/meg/meg_brainalign_sub<meg_id>_shared_best.pt --target-modality fmri --target-subject <fmri_id> --target-ckpt checkpoints/fmri/fmri_brainalign_sub<fmri_id>_shared_best.pt --split test`
+
+If the PC is running Windows PowerShell, replace steps 4, 5, 8, and 9 with:
+
+1. `.\scripts\train_all_subjects.ps1 -Modality meg -Resume`
+2. `.\scripts\train_all_subjects.ps1 -Modality fmri -Resume`
+3. `.\scripts\train_all_subjects.ps1 -Modality meg -SharedOnly -Resume`
+4. `.\scripts\train_all_subjects.ps1 -Modality fmri -SharedOnly -Resume`
+
+# Notes
+
+- EEG checkpoints are already present and can still be evaluated separately.
+- Full-data retrieval and shared-only conversion are intentionally separate workflows.
+- The conversion evaluator currently assumes shared-image alignment and aggregates embeddings per `image_id`.
