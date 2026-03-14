@@ -1,11 +1,12 @@
 import os
 from pathlib import Path
 import numpy as np
-import pandas as pd
 import torch
 from torch.utils.data import Dataset
 import yaml
 import h5py
+
+from src.data.csv_utils import read_text_table
 
 
 # Number of highest-variance voxels to retain.
@@ -63,7 +64,7 @@ class THINGSfMRIDataset(Dataset):
         if not metadata_tsv.exists():
             raise FileNotFoundError(f"Stimulus metadata not found: {metadata_tsv}")
             
-        df = pd.read_csv(metadata_tsv, sep=',', encoding='utf-8', on_bad_lines='skip', engine='python')
+        df = read_text_table(metadata_tsv, expected_columns={"stimulus"})
         self._log(f"Loaded {len(df)} trials from {metadata_tsv.name}")
         
         # ---- Load HDF5, select top-K voxels, preload into RAM ----

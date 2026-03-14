@@ -10,6 +10,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from src.data.csv_utils import read_text_table
+
 
 def load_config(config_path):
     with open(config_path, "r") as handle:
@@ -47,13 +49,7 @@ def extract_fmri_image_ids(fmri_dir):
 
     print(f"Found {len(fmri_event_files)} fMRI stimulus metadata files.")
     for event_file in fmri_event_files:
-        df = pd.read_csv(
-            event_file,
-            sep=",",
-            encoding="utf-8",
-            on_bad_lines="skip",
-            engine="python",
-        )
+        df = read_text_table(event_file, expected_columns={"stimulus"})
         if "stimulus" not in df.columns:
             continue
 
