@@ -33,14 +33,22 @@ pip install -r requirements.txt
 These are lightweight and safe to run before training:
 
 ```bash
-python scripts/test_model.py
-python scripts/print_shapes.py
-python scripts/print_fmri_struct.py
-python scripts/test_meg_metadata.py
-python scripts/test_pd.py
+./.venv/bin/python scripts/test_model.py
+./.venv/bin/python scripts/print_shapes.py
+./.venv/bin/python scripts/print_fmri_struct.py
+./.venv/bin/python scripts/test_meg_metadata.py
+./.venv/bin/python scripts/test_pd.py
 ```
 
-Windows PowerShell uses the same Python commands after activation.
+Windows PowerShell equivalents:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/test_model.py
+.\.venv\Scripts\python.exe scripts/print_shapes.py
+.\.venv\Scripts\python.exe scripts/print_fmri_struct.py
+.\.venv\Scripts\python.exe scripts/test_meg_metadata.py
+.\.venv\Scripts\python.exe scripts/test_pd.py
+```
 
 # Recommended Run Order On The PC
 
@@ -49,10 +57,16 @@ Windows PowerShell uses the same Python commands after activation.
 If `data/shared_images.txt` is already correct, keep it. If you need to regenerate it, run:
 
 ```bash
-python scripts/build_shared_images.py
+./.venv/bin/python scripts/build_shared_images.py
 ```
 
 This script ignores unmapped MEG event IDs such as button-press artifacts and rewrites `data/shared_images.txt`.
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/build_shared_images.py
+```
 
 ## 2. Train or resume full-data retrieval models
 
@@ -86,7 +100,7 @@ Run this after the full-data checkpoints exist.
 Example for subject 1:
 
 ```bash
-python scripts/evaluate_retrieval.py \
+./.venv/bin/python scripts/evaluate_retrieval.py \
   --modality meg \
   --subject 1 \
   --ckpt checkpoints/meg/meg_brainalign_sub01_best.pt \
@@ -98,7 +112,7 @@ python scripts/evaluate_retrieval.py \
 Example for subject 3:
 
 ```bash
-python scripts/evaluate_retrieval.py \
+./.venv/bin/python scripts/evaluate_retrieval.py \
   --modality fmri \
   --subject 3 \
   --ckpt checkpoints/fmri/fmri_brainalign_sub03_best.pt \
@@ -107,7 +121,7 @@ python scripts/evaluate_retrieval.py \
 
 Outputs are written under `results/meg/` and `results/fmri/`.
 
-If you are using PowerShell on the PC, the same `python scripts/...` evaluation commands work after activating the virtual environment.
+Windows PowerShell uses the same arguments with `.\.venv\Scripts\python.exe`.
 
 ## 4. Train or resume shared-only conversion models
 
@@ -139,7 +153,7 @@ Shared-only checkpoints are saved with `_shared` in the filename so they do not 
 This is optional but useful to confirm the shared-subset models are healthy before conversion.
 
 ```bash
-python scripts/evaluate_retrieval.py \
+./.venv/bin/python scripts/evaluate_retrieval.py \
   --modality meg \
   --subject 1 \
   --shared-only \
@@ -148,7 +162,7 @@ python scripts/evaluate_retrieval.py \
 ```
 
 ```bash
-python scripts/evaluate_retrieval.py \
+./.venv/bin/python scripts/evaluate_retrieval.py \
   --modality fmri \
   --subject 3 \
   --shared-only \
@@ -161,7 +175,7 @@ python scripts/evaluate_retrieval.py \
 Once both shared-only checkpoints exist:
 
 ```bash
-python scripts/evaluate_conversion.py \
+./.venv/bin/python scripts/evaluate_conversion.py \
   --source-modality meg \
   --source-subject 1 \
   --source-ckpt checkpoints/meg/meg_brainalign_sub01_shared_best.pt \
@@ -177,18 +191,18 @@ This writes results under `results/conversion/`.
 
 Run these in this order:
 
-1. `python scripts/test_model.py`
-2. `python scripts/print_shapes.py`
-3. `python scripts/build_shared_images.py` if `data/shared_images.txt` needs to be refreshed
+1. `./.venv/bin/python scripts/test_model.py`
+2. `./.venv/bin/python scripts/print_shapes.py`
+3. `./.venv/bin/python scripts/build_shared_images.py` if `data/shared_images.txt` needs to be refreshed
 4. `./scripts/train_all_subjects.sh --modality meg --resume`
 5. `./scripts/train_all_subjects.sh --modality fmri --resume`
-6. `python scripts/evaluate_retrieval.py --modality meg --subject <id> --ckpt checkpoints/meg/meg_brainalign_sub<id>_best.pt --split test`
-7. `python scripts/evaluate_retrieval.py --modality fmri --subject <id> --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_best.pt --split test`
+6. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --ckpt checkpoints/meg/meg_brainalign_sub<id>_best.pt --split test`
+7. `./.venv/bin/python scripts/evaluate_retrieval.py --modality fmri --subject <id> --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_best.pt --split test`
 8. `./scripts/train_all_subjects.sh --modality meg --shared-only --resume`
 9. `./scripts/train_all_subjects.sh --modality fmri --shared-only --resume`
-10. `python scripts/evaluate_retrieval.py --modality meg --subject <id> --shared-only --ckpt checkpoints/meg/meg_brainalign_sub<id>_shared_best.pt --split test`
-11. `python scripts/evaluate_retrieval.py --modality fmri --subject <id> --shared-only --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_shared_best.pt --split test`
-12. `python scripts/evaluate_conversion.py --source-modality meg --source-subject <meg_id> --source-ckpt checkpoints/meg/meg_brainalign_sub<meg_id>_shared_best.pt --target-modality fmri --target-subject <fmri_id> --target-ckpt checkpoints/fmri/fmri_brainalign_sub<fmri_id>_shared_best.pt --split test`
+10. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --shared-only --ckpt checkpoints/meg/meg_brainalign_sub<id>_shared_best.pt --split test`
+11. `./.venv/bin/python scripts/evaluate_retrieval.py --modality fmri --subject <id> --shared-only --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_shared_best.pt --split test`
+12. `./.venv/bin/python scripts/evaluate_conversion.py --source-modality meg --source-subject <meg_id> --source-ckpt checkpoints/meg/meg_brainalign_sub<meg_id>_shared_best.pt --target-modality fmri --target-subject <fmri_id> --target-ckpt checkpoints/fmri/fmri_brainalign_sub<fmri_id>_shared_best.pt --split test`
 
 If the PC is running Windows PowerShell, replace steps 4, 5, 8, and 9 with:
 
