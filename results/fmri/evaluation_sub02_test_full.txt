@@ -1,0 +1,15 @@
+--- Evaluation Results (FMRI / subject 02) ---
+Checkpoint: checkpoints/fmri/fmri_brainalign_sub02_best.pt
+Split: test
+Shared-only images: False
+Candidate images: 874
+
+Modality -> Image
+Top-1 Retrieval: 1.95%
+Top-5 Retrieval: 6.86%
+CLIP 2-Way:      78.51%
+
+Image -> Modality
+Top-1 Retrieval: 2.52%
+Top-5 Retrieval: 8.47%
+CLIP 2-Way:      78.91%

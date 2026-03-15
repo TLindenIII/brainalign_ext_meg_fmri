@@ -1,0 +1,15 @@
+--- Evaluation Results (FMRI / subject 03) ---
+Checkpoint: checkpoints/fmri/fmri_brainalign_sub03_best.pt
+Split: test
+Shared-only images: False
+Candidate images: 874
+
+Modality -> Image
+Top-1 Retrieval: 0.69%
+Top-5 Retrieval: 3.78%
+CLIP 2-Way:      75.65%
+
+Image -> Modality
+Top-1 Retrieval: 1.60%
+Top-5 Retrieval: 5.03%
+CLIP 2-Way:      75.96%

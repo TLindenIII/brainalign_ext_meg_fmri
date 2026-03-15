@@ -1,0 +1,15 @@
+--- Evaluation Results (MEG / subject 02) ---
+Checkpoint: checkpoints/meg/meg_brainalign_sub02_attnpool_best.pt
+Split: test
+Shared-only images: False
+Candidate images: 2245
+
+Modality -> Image
+Top-1 Retrieval: 0.76%
+Top-5 Retrieval: 4.32%
+CLIP 2-Way:      84.71%
+
+Image -> Modality
+Top-1 Retrieval: 1.20%
+Top-5 Retrieval: 4.63%
+CLIP 2-Way:      85.53%

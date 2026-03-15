@@ -218,4 +218,3 @@ __marimo__/
 
 # Ignore large binary files
 /checkpoints/
-/results/
