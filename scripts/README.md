@@ -54,6 +54,9 @@ Checkpoint naming:
 - `scripts/evaluate_conversion.py`
   - Reports modality-to-modality conversion metrics on a shared manifest.
   - Defaults to `data/manifests/intersections/<modalities>.txt` when present.
+- `scripts/evaluate_conversion_matrix.py`
+  - Evaluates all subject-pair conversions for two modalities while loading each subject only once.
+  - Writes the same per-pair `results/conversion/*.txt` files as `scripts/evaluate_conversion.py`.
 - `scripts/evaluate_eeg_table.py`
   - EEG-only summary table generator.
 - `scripts/summarize_results.py`
