@@ -179,13 +179,34 @@ def build_retrieval_lookup(rows):
     return lookup
 
 
+def lookup_retrieval_reference(lookup, modality, subject, split, shared_only=False):
+    exact = lookup.get((modality, subject, split, shared_only))
+    if exact is not None:
+        return exact
+
+    if modality == "eeg":
+        legacy = lookup.get((modality, subject, "test_200way", shared_only))
+        if legacy is not None:
+            return legacy
+
+    return None
+
+
 def add_conversion_normalization(rows, retrieval_lookup):
     for row in rows:
-        forward_ref = retrieval_lookup.get(
-            (row["target_modality"], row["target_subject"], row["split"], False)
+        forward_ref = lookup_retrieval_reference(
+            retrieval_lookup,
+            row["target_modality"],
+            row["target_subject"],
+            row["split"],
+            False,
         )
-        reverse_ref = retrieval_lookup.get(
-            (row["source_modality"], row["source_subject"], row["split"], False)
+        reverse_ref = lookup_retrieval_reference(
+            retrieval_lookup,
+            row["source_modality"],
+            row["source_subject"],
+            row["split"],
+            False,
         )
         row["forward_reference_two_way"] = forward_ref["m2i_two_way"] if forward_ref else float("nan")
         row["reverse_reference_two_way"] = reverse_ref["m2i_two_way"] if reverse_ref else float("nan")
@@ -306,6 +327,26 @@ def build_report(retrieval_rows, retrieval_summary_rows, conversion_rows, conver
     return "\n".join(lines)
 
 
+def preferred_decoding_rows(summary_rows):
+    preferred = {}
+    split_priority = {"test": 0, "test_200way": 1, "val": 2, "train": 3}
+
+    for row in summary_rows:
+        if row["shared_only"]:
+            continue
+
+        modality = row["modality"]
+        candidate = (
+            split_priority.get(row["split"], 99),
+            -row["count"],
+        )
+        current = preferred.get(modality)
+        if current is None or candidate < current[0]:
+            preferred[modality] = (candidate, row)
+
+    return [preferred[key][1] for key in sorted(preferred)]
+
+
 def main(results_root, output_dir):
     results_root = Path(results_root)
     output_dir = Path(output_dir)
@@ -369,7 +410,7 @@ def main(results_root, output_dir):
             "split": row["split"],
             "shared_only": row["shared_only"],
         }
-        for row in retrieval_summary_rows
+        for row in preferred_decoding_rows(retrieval_summary_rows)
     ]
 
     conversion_table_rows = []
