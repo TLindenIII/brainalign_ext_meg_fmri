@@ -56,6 +56,8 @@ Checkpoint naming:
   - Defaults to `data/manifests/intersections/<modalities>.txt` when present.
 - `scripts/evaluate_eeg_table.py`
   - EEG-only summary table generator.
+- `scripts/summarize_results.py`
+  - Aggregates retrieval and conversion `.txt` outputs into CSV summaries, a markdown report, and paper-style decoding/conversion tables under `results/summary/`.
 
 ## Requirements For Correct MEG Training
 

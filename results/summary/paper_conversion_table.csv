@@ -1,0 +1,3 @@
+conversion,clip_2_way_decoding_accuracy,normalized_clip_2_way_decoding_accuracy,split,shared_only,pair_count
+MEG to FMRI,0.6845,0.8804,test,True,12
+FMRI to MEG,0.686758,0.9248,test,True,12
