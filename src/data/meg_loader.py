@@ -5,6 +5,14 @@ import mne
 import torch
 from torch.utils.data import Dataset
 
+from src.data.image_manifest import (
+    load_named_image_ids,
+    load_things_image_map,
+    resolve_repo_path,
+    resolve_shared_manifest_path,
+    resolve_things_image_map_path,
+)
+
 
 class THINGSMEGDataset(Dataset):
     """
@@ -15,7 +23,8 @@ class THINGSMEGDataset(Dataset):
     - Channels: 271 (downsampled/cleaned from original 306)
     - Sample format: [n_epochs, 271 channels, 281 timepoints] (-0.1s to 1.3s @ 200Hz 
       downsampled from 1200Hz).
-    - Event codes map to the global 1-16540 image stimuli IDs.
+    - Event codes use THINGS image numbers and must be resolved through a
+      THINGS image map before they can be matched to CLIP targets.
     """
     
     def __init__(
@@ -26,6 +35,8 @@ class THINGSMEGDataset(Dataset):
         subject=1,
         transform=None,
         shared_only=False,
+        shared_manifest_path=None,
+        things_image_map_path=None,
         quiet=False,
     ):
         self.meg_dir = Path(meg_dir)
@@ -42,23 +53,20 @@ class THINGSMEGDataset(Dataset):
         
         # Load shared cross-modal image intersection
         self.shared_images = None
-        shared_path = Path("data/shared_images.txt")
-        if self.shared_only and shared_path.exists():
-            with open(shared_path, "r") as f:
-                self.shared_images = set([line.strip() for line in f.readlines()])
-                self._log(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
-                
-        # To strictly map MNE event integers to global IDs as strings
-        id_to_string_map = {}
-        max_valid_event_id = None
-        metadata_path = Path("data/things-eeg2/stimuli/image_metadata.npy")
-        if metadata_path.exists():
-            metadata = np.load(metadata_path, allow_pickle=True).item()
-            train_files = [Path(f).stem for f in metadata["train_img_files"]]
-            test_files = [Path(f).stem for f in metadata["test_img_files"]]
-            all_files = train_files + test_files
-            id_to_string_map = {i + 1: file_stem for i, file_stem in enumerate(all_files)}
-            max_valid_event_id = len(all_files)
+        if self.shared_only:
+            shared_path = resolve_shared_manifest_path(True, shared_manifest_path)
+            self.shared_images = load_named_image_ids(shared_path)
+            self._log(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
+
+        image_map_path = resolve_things_image_map_path(explicit_path=things_image_map_path)
+        if image_map_path is None or not image_map_path.exists():
+            raise FileNotFoundError(
+                "MEG training requires a full THINGS image map (image number -> image_id). "
+                "Expected data/things_image_map.tsv (or another supported map path) by default. "
+                "Generate manifests with scripts/build_shared_images.py after providing that map."
+            )
+        things_image_map = load_things_image_map(image_map_path)
+        max_valid_event_id = max(things_image_map) if things_image_map else None
                 
         # Discover all preprocessed epoch files for this subject.
         # Prefer the merged subject file when present. Some folders also contain split
@@ -110,13 +118,11 @@ class THINGSMEGDataset(Dataset):
                 event_id = int(event_row[2])
                 
                 # Check mapping
-                if id_to_string_map:
-                    image_id = id_to_string_map.get(event_id)
-                    if image_id is None:
-                        skipped_unmapped_events += 1
-                        continue
-                else:
-                    image_id = str(event_id)
+                mapped = things_image_map.get(event_id)
+                if mapped is None:
+                    skipped_unmapped_events += 1
+                    continue
+                image_id = mapped["image_id"]
                     
                 self.trials.append({
                     "global_idx": data_row_idx, # Map back to the concatenated numpy array
@@ -132,7 +138,7 @@ class THINGSMEGDataset(Dataset):
         if max_valid_event_id is not None and skipped_unmapped_events > 0:
             self._log(
                 f"Skipped {skipped_unmapped_events} unmapped MEG events "
-                f"(outside 1..{max_valid_event_id}, e.g. button-press markers)."
+                f"(not present in the THINGS image map up to {max_valid_event_id}, e.g. button-press markers)."
             )
         
         # Optional: Normalize channels to Z-score across time standard practice

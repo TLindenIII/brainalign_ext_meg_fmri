@@ -4,6 +4,9 @@ data:
   # EEG2 uses its own stimuli directory
   eeg_dir: "data/things-eeg2"
   eeg_stimuli_dir: "data/things-eeg2/stimuli"
+  manifests_dir: "data/manifests"
+  things_image_map_path: "data/things_image_map.tsv"
+  things_image_root: "osfstorage-archive/images_THINGS/object_images"
 
   # MEG and fMRI point to BIDS derivatives/sourcedata
   meg_dir: "data/things-meg-ds004212"

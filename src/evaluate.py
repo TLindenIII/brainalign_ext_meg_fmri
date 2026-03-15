@@ -30,8 +30,10 @@ def evaluate(model, test_loader, clip_dict, device):
     return flat_metrics
 
 
-def main(config_path, modality, checkpoint_path, subject, split, shared_only):
+def main(config_path, modality, checkpoint_path, subject, split, shared_only, shared_manifest_path=None):
     config = load_config(config_path)
+    if shared_manifest_path:
+        config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device} to evaluate {modality.upper()} subject {subject:02d}")
 
@@ -96,5 +98,19 @@ if __name__ == "__main__":
         action="store_true",
         help="Restrict MEG/fMRI evaluation to the shared image intersection",
     )
+    parser.add_argument(
+        "--shared-manifest",
+        type=str,
+        default=None,
+        help="Optional manifest of image_ids to use when --shared-only is enabled",
+    )
     args = parser.parse_args()
-    main(args.config, args.modality, args.ckpt, args.subject, args.split, args.shared_only)
+    main(
+        args.config,
+        args.modality,
+        args.ckpt,
+        args.subject,
+        args.split,
+        args.shared_only,
+        args.shared_manifest,
+    )

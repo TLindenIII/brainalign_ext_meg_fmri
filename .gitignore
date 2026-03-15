@@ -208,6 +208,7 @@ __marimo__/
 
 # Datasets
 /data/
+/osfstorage-archive/
 
 # Un-ignore the globally ignored cache directory
 !clip_cache/

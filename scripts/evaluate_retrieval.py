@@ -21,5 +21,19 @@ if __name__ == "__main__":
         action="store_true",
         help="Restrict evaluation to the shared image intersection",
     )
+    parser.add_argument(
+        "--shared-manifest",
+        type=str,
+        default=None,
+        help="Optional manifest of image_ids to use when --shared-only is enabled",
+    )
     args = parser.parse_args()
-    main(args.config, args.modality, args.ckpt, args.subject, args.split, args.shared_only)
+    main(
+        args.config,
+        args.modality,
+        args.ckpt,
+        args.subject,
+        args.split,
+        args.shared_only,
+        args.shared_manifest,
+    )

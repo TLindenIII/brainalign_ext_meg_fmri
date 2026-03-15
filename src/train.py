@@ -33,6 +33,8 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
     Returns the appropriate DataLoader for the given modality.
     """
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
+    shared_manifest_path = config["data"].get("shared_manifest_path")
+    things_image_map_path = config["data"].get("things_image_map_path")
     
     if modality == "eeg":
         dataset = THINGSEEG2Dataset(
@@ -41,6 +43,7 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             split=split,
             subject=subject,
             shared_only=shared_only,
+            shared_manifest_path=shared_manifest_path,
         )
     elif modality == "meg":
         dataset = THINGSMEGDataset(
@@ -49,6 +52,8 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             split=split,
             subject=subject,
             shared_only=shared_only,
+            shared_manifest_path=shared_manifest_path,
+            things_image_map_path=things_image_map_path,
         )
     elif modality == "fmri":
         dataset = THINGSfMRIDataset(
@@ -57,6 +62,7 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             split=split,
             subject=subject,
             shared_only=shared_only,
+            shared_manifest_path=shared_manifest_path,
         )
     else:
         raise ValueError(f"Unknown modality: {modality}")
@@ -73,6 +79,8 @@ def get_meg_train_val_dataloaders(config, subject=1, shared_only=False):
         split="all",
         subject=subject,
         shared_only=shared_only,
+        shared_manifest_path=config["data"].get("shared_manifest_path"),
+        things_image_map_path=config["data"].get("things_image_map_path"),
     )
 
     train_images = full_dataset.image_splits["train"]
@@ -89,8 +97,19 @@ def get_meg_train_val_dataloaders(config, subject=1, shared_only=False):
     )
     return train_loader, val_loader
 
-def train(config_path, modality, subject, epochs_override=None, resume=False, resume_best=False, shared_only=False):
+def train(
+    config_path,
+    modality,
+    subject,
+    epochs_override=None,
+    resume=False,
+    resume_best=False,
+    shared_only=False,
+    shared_manifest_path=None,
+):
     config = load_config(config_path)
+    if shared_manifest_path:
+        config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     scope_label = "shared" if shared_only else "full"
     print(f"Using device: {device} for modality {modality.upper()}, subject {subject:02d} ({scope_label})")
@@ -277,6 +296,21 @@ if __name__ == "__main__":
         action="store_true",
         help="Restrict MEG/fMRI training to the shared image intersection used for conversion",
     )
+    parser.add_argument(
+        "--shared-manifest",
+        type=str,
+        default=None,
+        help="Optional manifest of image_ids to use when --shared-only is enabled",
+    )
     args = parser.parse_args()
     
-    train(args.config, args.modality, args.subject, args.epochs, args.resume, args.resume_best, args.shared_only)
+    train(
+        args.config,
+        args.modality,
+        args.subject,
+        args.epochs,
+        args.resume,
+        args.resume_best,
+        args.shared_only,
+        args.shared_manifest,
+    )

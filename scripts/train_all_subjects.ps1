@@ -2,7 +2,8 @@ param (
     [string]$Modality = "eeg",
     [string]$Epochs = "",
     [switch]$Resume,
-    [switch]$SharedOnly
+    [switch]$SharedOnly,
+    [string]$SharedManifest = ""
 )
 
 $ModalityUpper = $Modality.ToUpper()
@@ -45,6 +46,13 @@ if ($SubjectIds.Count -eq 0) {
 
 $CheckpointSuffix = if ($SharedOnly) { "_shared" } else { "" }
 $CheckpointStemExtra = if ($Modality -eq "meg") { "_attnpool" } else { "" }
+$PythonExe = if (Test-Path ".\.venv\Scripts\python.exe") {
+    ".\.venv\Scripts\python.exe"
+} elseif (Test-Path ".\venv\Scripts\python.exe") {
+    ".\venv\Scripts\python.exe"
+} else {
+    "python"
+}
 
 for ($idx = 0; $idx -lt $SubjectIds.Count; $idx++) {
     $i = $SubjectIds[$idx]
@@ -64,8 +72,9 @@ for ($idx = 0; $idx -lt $SubjectIds.Count; $idx++) {
     $EpochArg = if ($Epochs) { "--epochs", $Epochs } else { @() }
     $ResumeArg = if ($Resume) { "--resume" } else { @() }
     $SharedArg = if ($SharedOnly) { "--shared-only" } else { @() }
+    $SharedManifestArg = if ($SharedManifest) { "--shared-manifest", $SharedManifest } else { @() }
     
-    & ".\venv\Scripts\python.exe" -m src.train --modality $Modality --subject $i @EpochArg @ResumeArg @SharedArg
+    & $PythonExe -m src.train --modality $Modality --subject $i @EpochArg @ResumeArg @SharedArg @SharedManifestArg
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Training failed for Subject $i. Exiting."
@@ -82,7 +91,7 @@ Write-Host "============================================================"
 
 if (($Modality -eq "eeg") -and -not $SharedOnly) {
     Write-Host "Automatically generating the EEG summary table..."
-    & ".\venv\Scripts\python.exe" "scripts\evaluate_eeg_table.py"
+    & $PythonExe "scripts\evaluate_eeg_table.py"
 } else {
     Write-Host "Skipping automatic summary for ${ModalityUpper}."
     Write-Host "Use scripts/evaluate_retrieval.py for modality-vs-image metrics and scripts/evaluate_conversion.py for shared-image conversion."

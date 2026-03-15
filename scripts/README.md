@@ -1,111 +1,89 @@
 # Scripts Directory
 
-This directory contains the user-facing scripts for training, evaluation, and lightweight sanity checks in the BrainAlign project. Model and loader implementation still live in `src/`, but the commands you run are centralized here.
+This directory contains the user-facing entry points for data prep, training, and evaluation. The project now uses one CLIP space across EEG, MEG, and fMRI, with manifest files controlling each modality's native image set and the pairwise or 3-way intersections used for conversion.
 
-## Available Scripts
+## Core Workflow
 
-### `train_all_subjects.sh` (Linux/Mac) & `train_all_subjects.ps1` (Windows)
+### Data-prep scripts
 
-These scripts automate the process of sequentially running the training loop (`src/train.py`) across all locally available subjects for a specified modality. They ensure that the model is trained consistently and provide a streamlined way to run the dataset without manual intervention for each subject.
+- `scripts/build_image_manifests.py`
+  - Writes modality manifests under `data/manifests/`.
+  - Always produces:
+    - `data/manifests/eeg_all.tsv`
+    - `data/manifests/fmri_all.tsv`
+    - `data/manifests/meg_numeric.tsv`
+  - If a THINGS image-number map is available, also produces:
+    - `data/manifests/meg_all.tsv`
+    - `data/manifests/all_modalities_union.tsv`
+    - `data/manifests/intersections/eeg_meg.txt`
+    - `data/manifests/intersections/eeg_fmri.txt`
+    - `data/manifests/intersections/fmri_meg.txt`
+    - `data/manifests/intersections/eeg_fmri_meg.txt`
+- `scripts/build_shared_images.py`
+  - Compatibility wrapper around `scripts/build_image_manifests.py`.
+  - Keeps the legacy `data/shared_images.txt` file in sync from `fmri_meg.txt` when that intersection exists.
+- `scripts/build_clip_cache.py`
+  - Preferred entry point for CLIP cache creation.
+  - Use `--manifest data/manifests/all_modalities_union.tsv --image-root <THINGS root>` to build one cache for all modalities.
 
-#### Features:
+### Training scripts
 
-- **Sequential Execution:** Discovers and loops over the locally available subjects for the requested modality.
-- **Checkpoint Skipping:** If it detects an existing `best.pt` checkpoint for a subject, it will skip training for that subject to save time, unless forced or resuming.
-- **Virtual Environment:** Automatically sources `.venv/bin/activate` (`.sh`) or `.\venv\Scripts\Activate.ps1` (`.ps1`) if it exists in the root directory.
-- **Shared-Subset Training:** Optional `--shared-only` / `-SharedOnly` flag to train MEG/fMRI only on the `shared_images.txt` intersection used for conversion.
-- **Final Evaluation:** EEG runs still auto-generate the EEG summary table; MEG/fMRI runs now print the recommended `scripts/evaluate_retrieval.py` / `scripts/evaluate_conversion.py` follow-up commands instead of calling the EEG-only summary script.
+- `scripts/train_all_subjects.sh`
+- `scripts/train_all_subjects.ps1`
 
-#### Checkpoint System:
+These discover the locally available subjects for a modality and launch `src/train.py` sequentially.
 
-By default, `train.py` creates two kinds of comprehensive state dictionaries for every subject during training:
+Key behavior:
 
-1. `*_best.pt`: Saved **only** when the model achieves a new high-score on the isolated Validation set. Resuming from this file restores the model to its absolute smartest observed state (Early Stopping).
-2. `*_latest.pt`: Saved indiscriminately at the exact end of every single epoch. Resuming from this file restores the exact momentum of your last trained epoch, regardless of whether the model had begun overfitting.
+- Auto-detects `.venv` first, then `venv`, then falls back to `python`.
+- Skips subjects with existing `*_best.pt` checkpoints unless `--resume` / `-Resume` is used.
+- Accepts `--shared-only` / `-SharedOnly` for shared-manifest training.
+- Accepts `--shared-manifest <path>` / `-SharedManifest <path>` to target a specific intersection file.
 
-**Storage Location & Modality Isolation:**
-Checkpoints are rigidly isolated by modality to prevent cross-contamination. They are saved in the root `checkpoints/` directory following this structure:
+Checkpoint naming:
 
-- `checkpoints/eeg/eeg_brainalign_sub01_best.pt`
-- `checkpoints/fmri/fmri_brainalign_sub01_latest.pt`
-- `checkpoints/meg/meg_brainalign_sub01_best.pt`
+- EEG: `checkpoints/eeg/eeg_brainalign_sub01_best.pt`
+- fMRI: `checkpoints/fmri/fmri_brainalign_sub01_best.pt`
+- MEG: `checkpoints/meg/meg_brainalign_sub01_attnpool_best.pt`
+- Shared-only runs add `_shared` before `_best.pt` / `_latest.pt`
 
-If `--shared-only` is used, the scripts add a `_shared` suffix before `_best.pt` / `_latest.pt` so full-data retrieval models and shared-subset conversion models do not overwrite each other.
+### Evaluation scripts
 
-#### Usage:
+- `scripts/evaluate_retrieval.py`
+  - Reports modality-to-image and image-to-modality Top-1, Top-5, and CLIP 2-way.
+- `scripts/evaluate_conversion.py`
+  - Reports modality-to-modality conversion metrics on a shared manifest.
+  - Defaults to `data/manifests/intersections/<modalities>.txt` when present.
+- `scripts/evaluate_eeg_table.py`
+  - EEG-only summary table generator.
 
-Run the appropriate script for your OS from the **root directory** of the project:
+## Requirements For Correct MEG Training
 
-**Linux/Mac:**
-```bash
-./scripts/train_all_subjects.sh [OPTIONS]
-```
+MEG no longer falls back to EEG stimulus metadata. To train MEG correctly, the repo now expects a THINGS image-number map at `data/things_image_map.tsv` or the path configured by `data.things_image_map_path` in `config.yaml`.
 
-**Windows (PowerShell):**
-```powershell
-.\scripts\train_all_subjects.ps1 -Modality [OPTIONS]
-```
+Minimum columns:
 
-#### Arguments:
+- `image_number`
+- `image_id`
 
-- `--modality <type>` : (Required-ish, defaults to `eeg`) The data modality you want to train on. Acceptable values are `eeg`, `meg`, or `fmri`.
-- `--epochs <number>` : (Optional) Overrides the default number of epochs set in `config.yaml` (Defaults: `eeg`=60, `meg`=60, `fmri`=500). Example: `--epochs 200`.
-- `--resume` : (Optional) Tells the script to look for a `latest.pt` (or `best.pt` fallback) comprehensive state dictionary to resume training exactly where it left off, rather than starting from Epoch 1 or skipping the subject entirely.
-- `--shared-only` / `-SharedOnly` : (Optional) Restricts MEG/fMRI training to the shared image intersection used for cross-modal conversion and writes checkpoints with a `_shared` suffix.
+Recommended additional column:
 
-#### Examples:
+- `relative_path`
 
-**Train EEG (uses config.yaml default of 60 epochs):**
+If the repo contains the THINGS OSF archive metadata at `osfstorage-archive/01_image-level/image-paths.csv`, `scripts/build_image_manifests.py` will auto-generate `data/things_image_map.tsv`.
 
-```bash
-./scripts/train_all_subjects.sh
-```
+If neither a map nor the OSF image-path metadata is present, the manifest builder will generate `data/manifests/things_image_map.template.tsv`, and MEG training/evaluation will stop with a clear error instead of silently using the wrong image space.
 
-**Train fMRI (uses config.yaml default of 500 epochs):**
+## Helper / Sanity Scripts
 
-```bash
-./scripts/train_all_subjects.sh --modality fmri
-```
+- `scripts/test_model.py`
+- `scripts/print_shapes.py`
+- `scripts/print_fmri_struct.py`
+- `scripts/test_meg_metadata.py`
+- `scripts/test_pd.py`
+- `scripts/inspect_weights.py`
+- `scripts/patch_notebook.py`
 
-**Resume an interrupted fMRI training run:**
+## Runbook
 
-```bash
-./scripts/train_all_subjects.sh --modality fmri --resume
-```
-
-**Run in the background (helpful for remote servers or long runs):**
-
-```bash
-nohup ./scripts/train_all_subjects.sh --modality fmri --resume &> full_train_out.log &
-```
-
-**Monitor the background training logs:**
-
-```bash
-tail -f full_train_out.log
-```
-
-### Helper / Sanity Scripts
-
-These lightweight helper scripts are also centralized in this folder:
-
-- `scripts/test_model.py` : Instantiates `BrainAlignModel` and verifies the forward output shape.
-- `scripts/print_shapes.py` : Prints one sample shape for EEG, MEG, and fMRI loaders.
-- `scripts/print_fmri_struct.py` : Prints one sample fMRI metadata record.
-- `scripts/test_meg_metadata.py` : Dumps key EEG image metadata arrays used for MEG mapping.
-- `scripts/test_pd.py` : Quick pandas smoke test for reading MEG `events.tsv` files.
-- `scripts/inspect_weights.py` : Lists the CBraMod pretrained weight tensor shapes.
-- `scripts/patch_notebook.py` : Applies the retrieval notebook cell patch in-place.
-
-### Evaluation / Data-Prep Scripts
-
-- `scripts/build_shared_images.py` : Rebuilds `data/shared_images.txt` by intersecting valid MEG stimulus IDs with fMRI stimulus metadata.
-- `scripts/evaluate_retrieval.py` : Runs bidirectional retrieval metrics for EEG, MEG, or fMRI checkpoints.
-- `scripts/evaluate_conversion.py` : Runs shared-image modality-conversion metrics between any two trained modalities.
-- `scripts/evaluate_eeg_table.py` : Generates the EEG summary tables from the saved EEG checkpoints.
-
-### Runbook
-
-For the end-to-end order of operations on the training PC, see:
-
-- `scripts/RUNBOOK.Rmd`
+For the ordered training-PC workflow, see [scripts/RUNBOOK.Rmd](/Users/thomas/Documents/Projects/brainalign_ext_meg_fmri/scripts/RUNBOOK.Rmd).

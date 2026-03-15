@@ -19,6 +19,12 @@ if __name__ == "__main__":
     parser.add_argument("--target-ckpt", type=str, required=True, help="Checkpoint for the target modality")
     parser.add_argument("--target-subject", type=int, default=1, help="Target subject ID")
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
+    parser.add_argument(
+        "--shared-manifest",
+        type=str,
+        default=None,
+        help="Optional shared image manifest",
+    )
     args = parser.parse_args()
 
     main(
@@ -30,4 +36,5 @@ if __name__ == "__main__":
         args.target_ckpt,
         args.target_subject,
         args.split,
+        args.shared_manifest,
     )

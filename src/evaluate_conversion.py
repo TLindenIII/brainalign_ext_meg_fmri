@@ -12,6 +12,7 @@ from src.eval_utils import (
     load_checkpoint,
     load_config,
 )
+from src.data.image_manifest import default_intersection_manifest_path
 
 
 def build_loaded_model_and_loader(config, modality, checkpoint_path, subject, split, shared_only, device):
@@ -39,8 +40,15 @@ def main(
     target_ckpt,
     target_subject,
     split,
+    shared_manifest_path=None,
 ):
     config = load_config(config_path)
+    if shared_manifest_path:
+        config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
+    else:
+        inferred_manifest = default_intersection_manifest_path(config, [source_modality, target_modality])
+        if inferred_manifest.exists():
+            config.setdefault("data", {})["shared_manifest_path"] = str(inferred_manifest)
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(
         f"Using device: {device} for conversion evaluation "
@@ -119,6 +127,12 @@ if __name__ == "__main__":
     parser.add_argument("--target-ckpt", type=str, required=True, help="Checkpoint for the target modality")
     parser.add_argument("--target-subject", type=int, default=1, help="Target subject ID")
     parser.add_argument("--split", type=str, default="test", choices=["train", "val", "test"])
+    parser.add_argument(
+        "--shared-manifest",
+        type=str,
+        default=None,
+        help="Optional shared image manifest. Defaults to data/manifests/intersections/<modalities>.txt if present.",
+    )
     args = parser.parse_args()
 
     main(
@@ -130,4 +144,5 @@ if __name__ == "__main__":
         args.target_ckpt,
         args.target_subject,
         args.split,
+        args.shared_manifest,
     )

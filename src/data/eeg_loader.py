@@ -3,7 +3,8 @@ from pathlib import Path
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-import yaml
+
+from src.data.image_manifest import load_named_image_ids, resolve_shared_manifest_path
 
 class THINGSEEG2Dataset(Dataset):
     """
@@ -22,6 +23,7 @@ class THINGSEEG2Dataset(Dataset):
         subject=1,
         quiet=False,
         shared_only=False,
+        shared_manifest_path=None,
     ):
         self.eeg_dir = Path(eeg_dir)
         self.split = split
@@ -47,20 +49,14 @@ class THINGSEEG2Dataset(Dataset):
             raise ValueError(f"Subject directory not found: {eeg_data_dir}")
             
         if shared_only:
-            shared_path = Path("data/shared_images.txt")
-            if not shared_path.exists():
-                raise FileNotFoundError(
-                    "shared_only=True requires data/shared_images.txt to exist"
-                )
+            shared_path = resolve_shared_manifest_path(True, shared_manifest_path)
+            shared_images = load_named_image_ids(shared_path)
 
             eeg_data_path = eeg_data_dir / "preprocessed_eeg_training.npy"
             data_dict = np.load(eeg_data_path, allow_pickle=True).item()
             eeg_data_all = data_dict["preprocessed_eeg_data"] # [16540, Repetitions, Channels, Timepoints]
             concepts_all = self.metadata["train_img_concepts"]
             files_all = self.metadata["train_img_files"]
-
-            with open(shared_path, "r") as f:
-                shared_images = set(line.strip() for line in f.readlines())
 
             shared_indices = [
                 idx for idx, image_file in enumerate(files_all)

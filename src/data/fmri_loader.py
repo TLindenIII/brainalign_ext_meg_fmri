@@ -7,6 +7,7 @@ import yaml
 import h5py
 
 from src.data.csv_utils import read_text_table
+from src.data.image_manifest import load_named_image_ids, resolve_shared_manifest_path
 
 
 # Number of highest-variance voxels to retain.
@@ -36,6 +37,7 @@ class THINGSfMRIDataset(Dataset):
         subject=1,
         transform=None,
         shared_only=False,
+        shared_manifest_path=None,
         quiet=False,
     ):
         self.fmri_dir = Path(fmri_dir)
@@ -51,11 +53,10 @@ class THINGSfMRIDataset(Dataset):
         self.clip_cache = np.load(clip_cache_path)
         
         self.shared_images = None
-        shared_path = Path("data/shared_images.txt")
-        if self.shared_only and shared_path.exists():
-            with open(shared_path, "r") as f:
-                self.shared_images = set([line.strip() for line in f.readlines()])
-                self._log(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
+        if self.shared_only:
+            shared_path = resolve_shared_manifest_path(True, shared_manifest_path)
+            self.shared_images = load_named_image_ids(shared_path)
+            self._log(f"Loaded {len(self.shared_images)} shared images for cross-modal filtering")
                 
         # ---- Load the stimulus metadata TSV ----
         beta_dir = self.fmri_dir / "derivatives" / "ICA-betas" / sub_str / "voxel-metadata"

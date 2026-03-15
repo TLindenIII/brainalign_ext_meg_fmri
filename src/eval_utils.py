@@ -28,6 +28,8 @@ def load_clip_cache(config):
 
 def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=False):
     clip_cache_path = get_clip_cache_path(config)
+    shared_manifest_path = config["data"].get("shared_manifest_path")
+    things_image_map_path = config["data"].get("things_image_map_path")
 
     if modality == "eeg":
         return THINGSEEG2Dataset(
@@ -37,6 +39,7 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             subject=subject,
             quiet=quiet,
             shared_only=shared_only,
+            shared_manifest_path=shared_manifest_path,
         )
     if modality == "meg":
         return THINGSMEGDataset(
@@ -45,6 +48,8 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             split=split,
             subject=subject,
             shared_only=shared_only,
+            shared_manifest_path=shared_manifest_path,
+            things_image_map_path=things_image_map_path,
             quiet=quiet,
         )
     if modality == "fmri":
@@ -54,6 +59,7 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             split=split,
             subject=subject,
             shared_only=shared_only,
+            shared_manifest_path=shared_manifest_path,
             quiet=quiet,
         )
 
