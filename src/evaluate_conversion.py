@@ -31,6 +31,53 @@ def build_loaded_model_and_loader(config, modality, checkpoint_path, subject, sp
     return model, data_loader
 
 
+def build_result_lines(
+    source_modality,
+    source_subject,
+    source_ckpt,
+    target_modality,
+    target_subject,
+    target_ckpt,
+    split,
+    aligned_count,
+    metrics,
+):
+    forward_key = f"{source_modality}_to_{target_modality}"
+    reverse_key = f"{target_modality}_to_{source_modality}"
+
+    return [
+        f"--- Conversion Results ({source_modality.upper()} sub-{source_subject:02d} <-> "
+        f"{target_modality.upper()} sub-{target_subject:02d}) ---",
+        f"Source checkpoint: {source_ckpt}",
+        f"Target checkpoint: {target_ckpt}",
+        f"Split: {split}",
+        "Shared-only images: True",
+        f"Aligned shared test images: {aligned_count}",
+        "",
+        forward_key,
+        f"Top-1 Retrieval: {metrics['forward']['top1']:.2f}%",
+        f"Top-5 Retrieval: {metrics['forward']['top5']:.2f}%",
+        f"CLIP 2-Way:      {metrics['forward']['two_way']:.2f}%",
+        "",
+        reverse_key,
+        f"Top-1 Retrieval: {metrics['reverse']['top1']:.2f}%",
+        f"Top-5 Retrieval: {metrics['reverse']['top5']:.2f}%",
+        f"CLIP 2-Way:      {metrics['reverse']['two_way']:.2f}%",
+    ]
+
+
+def write_result_lines(lines, source_modality, source_subject, target_modality, target_subject, split):
+    results_dir = Path("results") / "conversion"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    out_path = (
+        results_dir
+        / f"{source_modality}_sub{source_subject:02d}_to_{target_modality}_sub{target_subject:02d}_{split}.txt"
+    )
+    with open(out_path, "w") as handle:
+        handle.write("\n".join(lines))
+    return out_path
+
+
 def main(
     config_path,
     source_modality,
@@ -81,39 +128,28 @@ def main(
     image_ids, source_matrix, target_matrix = align_embedding_dicts(source_embeddings, target_embeddings)
     metrics = compute_bidirectional_metrics(source_matrix, target_matrix)
 
-    forward_key = f"{source_modality}_to_{target_modality}"
-    reverse_key = f"{target_modality}_to_{source_modality}"
-
-    lines = [
-        f"--- Conversion Results ({source_modality.upper()} sub-{source_subject:02d} <-> "
-        f"{target_modality.upper()} sub-{target_subject:02d}) ---",
-        f"Source checkpoint: {source_ckpt}",
-        f"Target checkpoint: {target_ckpt}",
-        f"Split: {split}",
-        "Shared-only images: True",
-        f"Aligned shared test images: {len(image_ids)}",
-        "",
-        forward_key,
-        f"Top-1 Retrieval: {metrics['forward']['top1']:.2f}%",
-        f"Top-5 Retrieval: {metrics['forward']['top5']:.2f}%",
-        f"CLIP 2-Way:      {metrics['forward']['two_way']:.2f}%",
-        "",
-        reverse_key,
-        f"Top-1 Retrieval: {metrics['reverse']['top1']:.2f}%",
-        f"Top-5 Retrieval: {metrics['reverse']['top5']:.2f}%",
-        f"CLIP 2-Way:      {metrics['reverse']['two_way']:.2f}%",
-    ]
+    lines = build_result_lines(
+        source_modality,
+        source_subject,
+        source_ckpt,
+        target_modality,
+        target_subject,
+        target_ckpt,
+        split,
+        len(image_ids),
+        metrics,
+    )
 
     print("\n".join(lines))
 
-    results_dir = Path("results") / "conversion"
-    results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = (
-        results_dir
-        / f"{source_modality}_sub{source_subject:02d}_to_{target_modality}_sub{target_subject:02d}_{split}.txt"
+    out_path = write_result_lines(
+        lines,
+        source_modality,
+        source_subject,
+        target_modality,
+        target_subject,
+        split,
     )
-    with open(out_path, "w") as handle:
-        handle.write("\n".join(lines))
     print(f"Saved results to {out_path}")
 
 
