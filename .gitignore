@@ -215,3 +215,7 @@ __marimo__/
 
 # Planning
 /planning/*
+
+# Ignore large binary files
+/checkpoints/
+/results/
