@@ -284,12 +284,21 @@ def markdown_table(rows, headers, columns):
 
 def build_report(retrieval_rows, retrieval_summary_rows, conversion_rows, conversion_summary_rows):
     lines = ["# Results Summary", ""]
+    has_legacy_eeg_rows = any(
+        row["modality"] == "eeg" and row["split"] == "test_200way"
+        for row in retrieval_rows
+    )
+    retrieval_note = (
+        "Note: EEG rows come from the existing 200-way EEG summary table, while MEG/fMRI rows come from the full-image retrieval evaluator."
+        if has_legacy_eeg_rows
+        else "Note: Retrieval rows come from the per-subject retrieval evaluator for all available modalities."
+    )
 
     lines.extend(
         [
             "## Retrieval By Subject",
             "",
-            "Note: EEG rows come from the existing 200-way EEG summary table, while MEG/fMRI rows come from the full-image retrieval evaluator.",
+            retrieval_note,
             "",
             markdown_table(
                 retrieval_rows,
@@ -301,8 +310,8 @@ def build_report(retrieval_rows, retrieval_summary_rows, conversion_rows, conver
             "",
             markdown_table(
                 retrieval_summary_rows,
-                ["Modality", "Split", "Shared", "N", "M->I Top-1", "M->I Top-5", "M->I 2-way", "Base Top-1", "Base Top-5", "Classes"],
-                ["modality", "split", "shared_only", "count", "m2i_top1_mean", "m2i_top5_mean", "m2i_two_way_mean", "baseline_top1_pct_mean", "baseline_top5_pct_mean", "number_of_classes_mean"],
+                ["Modality", "Split", "Shared", "N", "M->I Top-1", "M->I Top-5", "M->I 2-way", "Base Top-1", "Base Top-5", "Retrieval Size", "Classes"],
+                ["modality", "split", "shared_only", "count", "m2i_top1_mean", "m2i_top5_mean", "m2i_two_way_mean", "baseline_top1_pct_mean", "baseline_top5_pct_mean", "retrieval_dataset_size_mean", "number_of_classes_mean"],
             ),
             "",
             "## Conversion By Pair",
@@ -357,7 +366,8 @@ def main(results_root, output_dir):
     eeg_summary_path = results_root / "eeg" / "evaluation_summary.txt"
 
     retrieval_rows = [parse_retrieval_file(path) for path in retrieval_files]
-    if eeg_summary_path.exists():
+    has_subject_level_eeg = any(row["modality"] == "eeg" for row in retrieval_rows)
+    if eeg_summary_path.exists() and not has_subject_level_eeg:
         retrieval_rows.extend(parse_eeg_summary_file(eeg_summary_path))
     retrieval_rows = add_retrieval_baselines(retrieval_rows)
     retrieval_lookup = build_retrieval_lookup(retrieval_rows)

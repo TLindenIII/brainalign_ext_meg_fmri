@@ -1,3 +1,7 @@
 conversion,clip_2_way_decoding_accuracy,normalized_clip_2_way_decoding_accuracy,split,shared_only,pair_count
+EEG to FMRI,0.8331399999999999,1.0721,test,True,30
+FMRI to EEG,0.840917,0.9286,test,True,30
+EEG to MEG,0.746448,1.0023,test,True,40
+MEG to EEG,0.7564019999999999,0.8354,test,True,40
 MEG to FMRI,0.6845,0.8804,test,True,12
 FMRI to MEG,0.686758,0.9248,test,True,12
