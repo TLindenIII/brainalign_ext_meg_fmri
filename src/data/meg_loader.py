@@ -76,7 +76,8 @@ class THINGSMEGDataset(Dataset):
             raise FileNotFoundError(f"MEG preprocessed directory not found: {prep_dir}")
 
         merged_file = prep_dir / f"preprocessed_P{subject}-epo.fif"
-        if merged_file.exists():
+        using_merged_root = merged_file.exists()
+        if using_merged_root:
             subject_files = [merged_file]
         else:
             subject_files = list(prep_dir.glob(f"preprocessed_P{subject}-epo-*.fif"))
@@ -85,7 +86,13 @@ class THINGSMEGDataset(Dataset):
             raise FileNotFoundError(f"No .fif files found for subject {subject} in {prep_dir}")
         subject_files.sort()  # ensure deterministic ordering
             
-        self._log(f"Loading {len(subject_files)} preprocessed epoch files for Subject {subject}...")
+        if using_merged_root:
+            self._log(
+                f"Using merged/root MEG epochs file for Subject {subject}: {merged_file.name} "
+                f"(split shards are not loaded separately)."
+            )
+        else:
+            self._log(f"Loading {len(subject_files)} split MEG epoch shard files for Subject {subject}...")
         
         # We will preload everything into RAM to speed up training drastically.
         # A single subject's MEG data is typically ~6GB total.
