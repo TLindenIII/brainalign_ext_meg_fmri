@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # Shared Image Intersection (MEG ↔ fMRI)
+# # Shared Image Intersection Across Modalities
 # 
 # Hypothesis 3 focuses on cross-modal retrieval (MEG embeddings retrieving fMRI embeddings).
 # To evaluate this modality conversion without trial-level pairing, we must evaluate at the **image level**.
 # 
-# This notebook parses all MEG and fMRI events, extracts the unique `image_id`s presented in each dataset, computes their intersection, and saves the matching subset as `shared_images.txt`.
+# This notebook parses the MEG and fMRI events, uses the EEG metadata as the common image vocabulary,
+# visualizes the EEG/MEG/fMRI overlap, and saves the MEG↔fMRI shared subset as `shared_images.txt`.
 
 # In[1]:
 
@@ -18,7 +19,7 @@ import yaml
 import pandas as pd
 from collections import Counter
 import matplotlib.pyplot as plt
-from matplotlib_venn import venn2
+from matplotlib_venn import venn3
 
 # Add parent directory to path
 sys.path.append(os.path.abspath('.'))
@@ -86,10 +87,11 @@ for event_file in fmri_event_files:
 print(f"Extract complete. Total unique fMRI Images: {len(fmri_image_ids)}")
 
 
-# ### 3. Resolving the ID Conflict
+# ### 3. Resolving the ID Conflict and Extracting EEG Images
 # The MEG dataset recorded numerical indices (e.g. `2351`), while the fMRI dataset recorded the string paths (e.g. `aardvark_01b`). 
 # 
-# To intersect them, we need the unified vocabulary list `image_metadata.npy` from the EEG stimuli folder. It contains `train_img_concepts_THINGS` alongside their string counterparts.
+# To intersect them, we need the unified vocabulary list `image_metadata.npy` from the EEG stimuli folder.
+# It also gives us the EEG image set for the 3-way overlap diagram.
 
 # In[5]:
 
@@ -101,6 +103,7 @@ metadata = np.load(metadata_path, allow_pickle=True).item()
 train_files = [Path(f).stem for f in metadata["train_img_files"]]
 test_files = [Path(f).stem for f in metadata["test_img_files"]]
 all_files = train_files + test_files
+eeg_image_ids = set(all_files)
 
 # Create a reverse lookup dictionary.
 # In the MEG dataset, value 1 corresponds to all_files[0], value 2 -> all_files[1], etc.
@@ -121,16 +124,40 @@ print(f"Mapped {len(mapped_meg_images)} out of {len(meg_image_ids)} MEG numeric 
 
 
 shared_images = mapped_meg_images.intersection(fmri_image_ids)
+eeg_meg_shared = eeg_image_ids.intersection(mapped_meg_images)
+eeg_fmri_shared = eeg_image_ids.intersection(fmri_image_ids)
+all_shared = eeg_image_ids.intersection(mapped_meg_images).intersection(fmri_image_ids)
+
+eeg_only = eeg_image_ids - mapped_meg_images - fmri_image_ids
+meg_only = mapped_meg_images - eeg_image_ids - fmri_image_ids
+fmri_only = fmri_image_ids - eeg_image_ids - mapped_meg_images
+eeg_meg_only = eeg_meg_shared - fmri_image_ids
+eeg_fmri_only = eeg_fmri_shared - mapped_meg_images
+meg_fmri_only = shared_images - eeg_image_ids
 
 print(f"\nIntersection Results:")
-print(f"Shared format images: {len(shared_images)}")
+print(f"EEG images: {len(eeg_image_ids)}")
+print(f"Mapped MEG images: {len(mapped_meg_images)}")
+print(f"fMRI images: {len(fmri_image_ids)}")
+print(f"EEG ∩ MEG: {len(eeg_meg_shared)}")
+print(f"EEG ∩ fMRI: {len(eeg_fmri_shared)}")
+print(f"MEG ∩ fMRI: {len(shared_images)}")
+print(f"EEG ∩ MEG ∩ fMRI: {len(all_shared)}")
 
-plt.figure(figsize=(8, 6))
-venn2(subsets=(len(mapped_meg_images - shared_images), 
-               len(fmri_image_ids - shared_images), 
-               len(shared_images)), 
-      set_labels=('MEG Images', 'fMRI Images'))
-plt.title("THINGS Dataset Cross-Modal Stimuli Overlap")
+plt.figure(figsize=(9, 8))
+venn3(
+    subsets=(
+        len(eeg_only),
+        len(meg_only),
+        len(eeg_meg_only),
+        len(fmri_only),
+        len(eeg_fmri_only),
+        len(meg_fmri_only),
+        len(all_shared),
+    ),
+    set_labels=("EEG Images", "MEG Images", "fMRI Images"),
+)
+plt.title("THINGS Dataset Cross-Modal Stimuli Overlap (EEG / MEG / fMRI)")
 plt.show()
 
 out_path = Path(".") / "data" / "shared_images.txt"
@@ -139,4 +166,3 @@ with open(out_path, "w") as f:
         f.write(f"{img}\n")
 
 print(f"Saved shared cross-modal stimuli list to {out_path}")
-
