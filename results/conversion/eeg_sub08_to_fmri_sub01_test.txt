@@ -1,0 +1,16 @@
+--- Conversion Results (EEG sub-08 <-> FMRI sub-01) ---
+Source checkpoint: checkpoints\eeg\eeg_brainalign_sub08_best.pt
+Target checkpoint: checkpoints\fmri\fmri_brainalign_sub01_best.pt
+Split: test
+Shared-only images: True
+Aligned shared test images: 77
+
+eeg_to_fmri
+Top-1 Retrieval: 10.39%
+Top-5 Retrieval: 41.56%
+CLIP 2-Way:      83.66%
+
+fmri_to_eeg
+Top-1 Retrieval: 12.99%
+Top-5 Retrieval: 37.66%
+CLIP 2-Way:      84.48%
