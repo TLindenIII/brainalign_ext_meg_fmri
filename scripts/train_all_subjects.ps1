@@ -69,12 +69,26 @@ for ($idx = 0; $idx -lt $SubjectIds.Count; $idx++) {
         continue
     }
     
-    $EpochArg = if ($Epochs) { "--epochs", $Epochs } else { @() }
-    $ResumeArg = if ($Resume) { "--resume" } else { @() }
-    $SharedArg = if ($SharedOnly) { "--shared-only" } else { @() }
-    $SharedManifestArg = if ($SharedManifest) { "--shared-manifest", $SharedManifest } else { @() }
+    $TrainArgs = @(
+        "-m", "src.train",
+        "--modality", $Modality,
+        "--subject", "$i"
+    )
+
+    if ($Epochs) {
+        $TrainArgs += @("--epochs", $Epochs)
+    }
+    if ($Resume) {
+        $TrainArgs += @("--resume")
+    }
+    if ($SharedOnly) {
+        $TrainArgs += @("--shared-only")
+    }
+    if ($SharedManifest) {
+        $TrainArgs += @("--shared-manifest", $SharedManifest)
+    }
     
-    & $PythonExe -m src.train --modality $Modality --subject $i @EpochArg @ResumeArg @SharedArg @SharedManifestArg
+    & $PythonExe @TrainArgs
     
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Training failed for Subject $i. Exiting."
