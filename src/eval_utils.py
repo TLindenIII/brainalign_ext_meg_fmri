@@ -31,6 +31,7 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
     clip_cache_path = get_clip_cache_path(config)
     shared_manifest_path = config["data"].get("shared_manifest_path")
     things_image_map_path = config["data"].get("things_image_map_path")
+    fmri_split_mode = config["data"].get("fmri_split_mode", "official_repeats")
 
     if modality == "eeg":
         return THINGSEEG2Dataset(
@@ -61,6 +62,7 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             subject=subject,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            split_mode=fmri_split_mode,
             quiet=quiet,
         )
 

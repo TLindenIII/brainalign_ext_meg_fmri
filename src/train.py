@@ -49,6 +49,7 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
     shared_manifest_path = config["data"].get("shared_manifest_path")
     things_image_map_path = config["data"].get("things_image_map_path")
+    fmri_split_mode = config["data"].get("fmri_split_mode", "official_repeats")
     
     if modality == "eeg":
         dataset = THINGSEEG2Dataset(
@@ -77,6 +78,7 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             subject=subject,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            split_mode=fmri_split_mode,
         )
     else:
         raise ValueError(f"Unknown modality: {modality}")
@@ -111,6 +113,35 @@ def get_meg_train_val_dataloaders(config, subject=1, shared_only=False):
     )
     return train_loader, val_loader
 
+
+def get_fmri_train_val_dataloaders(config, subject=1, shared_only=False):
+    clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
+    full_dataset = THINGSfMRIDataset(
+        fmri_dir=config["data"]["fmri_dir"],
+        clip_cache_path=clip_cache_path,
+        split="all",
+        subject=subject,
+        shared_only=shared_only,
+        shared_manifest_path=config["data"].get("shared_manifest_path"),
+        split_mode=config["data"].get("fmri_split_mode", "official_repeats"),
+    )
+
+    train_indices = [
+        idx for idx, trial in enumerate(full_dataset.trials) if trial["assigned_split"] == "train"
+    ]
+    val_indices = [
+        idx for idx, trial in enumerate(full_dataset.trials) if trial["assigned_split"] == "val"
+    ]
+
+    batch_size = config["training"]["batch_size"]["fmri"]
+    train_loader = DataLoader(Subset(full_dataset, train_indices), batch_size=batch_size, shuffle=True)
+    val_loader = DataLoader(Subset(full_dataset, val_indices), batch_size=batch_size, shuffle=False)
+    print(
+        f"Reused one fMRI preload for train/val: "
+        f"{len(train_indices)} train trials, {len(val_indices)} val trials"
+    )
+    return train_loader, val_loader
+
 def train(
     config_path,
     modality,
@@ -132,6 +163,12 @@ def train(
     print("Initializing dataloader...")
     if modality == "meg":
         train_loader, val_loader = get_meg_train_val_dataloaders(
+            config,
+            subject=subject,
+            shared_only=shared_only,
+        )
+    elif modality == "fmri":
+        train_loader, val_loader = get_fmri_train_val_dataloaders(
             config,
             subject=subject,
             shared_only=shared_only,

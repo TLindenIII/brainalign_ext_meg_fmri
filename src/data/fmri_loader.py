@@ -36,10 +36,12 @@ class THINGSfMRIDataset(Dataset):
         transform=None,
         shared_only=False,
         shared_manifest_path=None,
+        split_mode="official_repeats",
         quiet=False,
     ):
         self.fmri_dir = Path(fmri_dir)
         self.split = split
+        self.split_mode = split_mode
         self.transform = transform
         self.subject = subject
         self.shared_only = shared_only
@@ -91,41 +93,18 @@ class THINGSfMRIDataset(Dataset):
                 if self.shared_images and image_id not in self.shared_images:
                     continue
 
+                trial_type = str(row.get("trial_type", "")).strip().lower()
+
                 all_trials.append(
                     {
                         "trial_idx": row_idx,
                         "subject": sub_str,
                         "image_id": image_id,
+                        "trial_type": trial_type,
                     }
                 )
 
-            unique_images = sorted(list(set(t["image_id"] for t in all_trials)))
-            if not unique_images:
-                raise ValueError(
-                    "No fMRI image IDs remain after preprocessing/filtering. "
-                    "Check shared-image settings and stimulus metadata."
-                )
-
-            np.random.seed(42)
-            shuffled = unique_images.copy()
-            np.random.shuffle(shuffled)
-
-            train_end = int(0.8 * len(shuffled))
-            val_end = int(0.9 * len(shuffled))
-
-            train_images = set(shuffled[:train_end])
-            val_images = set(shuffled[train_end:val_end])
-            test_images = set(shuffled[val_end:])
-            self.image_splits = {
-                "train": train_images,
-                "val": val_images,
-                "test": test_images,
-            }
-
-            train_trial_indices = np.array(
-                [trial["trial_idx"] for trial in all_trials if trial["image_id"] in train_images],
-                dtype=int,
-            )
+            train_trial_indices = self._assign_splits(all_trials)
             if train_trial_indices.size == 0:
                 raise ValueError("No training trials available for fMRI feature selection/statistics")
 
@@ -159,16 +138,18 @@ class THINGSfMRIDataset(Dataset):
         self.voxel_std[self.voxel_std < 1e-6] = 1.0
 
         if self.split == "train":
-            self.trials = [t for t in all_trials if t["image_id"] in train_images]
+            self.trials = [t for t in all_trials if t["assigned_split"] == "train"]
         elif self.split == "val":
-            self.trials = [t for t in all_trials if t["image_id"] in val_images]
+            self.trials = [t for t in all_trials if t["assigned_split"] == "val"]
         elif self.split == "test":
-            self.trials = [t for t in all_trials if t["image_id"] in test_images]
+            self.trials = [t for t in all_trials if t["assigned_split"] == "test"]
+        elif self.split == "all":
+            self.trials = list(all_trials)
         else:
-            raise ValueError("Split must be 'train', 'val', or 'test'")
+            raise ValueError("Split must be 'train', 'val', 'test', or 'all'")
 
         self._log(
-            f"fMRI {sub_str} | {self.split}: {len(self.trials)} trials | "
+            f"fMRI {sub_str} | {self.split} ({self.split_mode}): {len(self.trials)} trials | "
             f"{self.n_voxels} selected voxels"
         )
         
@@ -200,3 +181,94 @@ class THINGSfMRIDataset(Dataset):
             "y_clip": y_clip,
             "meta": trial
         }
+
+    def _assign_splits(self, all_trials):
+        if not all_trials:
+            raise ValueError(
+                "No fMRI image IDs remain after preprocessing/filtering. "
+                "Check shared-image settings and stimulus metadata."
+            )
+
+        if self.split_mode == "official_repeats":
+            return self._assign_official_repeat_splits(all_trials)
+        if self.split_mode == "random_strict":
+            return self._assign_random_strict_splits(all_trials)
+
+        raise ValueError(
+            f"Unsupported fMRI split mode '{self.split_mode}'. "
+            "Expected 'official_repeats' or 'random_strict'."
+        )
+
+    def _assign_official_repeat_splits(self, all_trials):
+        official_train_trials = [trial for trial in all_trials if trial["trial_type"] == "train"]
+        official_test_trials = [trial for trial in all_trials if trial["trial_type"] == "test"]
+        if not official_train_trials or not official_test_trials:
+            raise ValueError(
+                "official_repeats requires metadata 'trial_type' values for both train and test rows"
+            )
+
+        official_train_images = sorted({trial["image_id"] for trial in official_train_trials})
+        rng = np.random.RandomState(42)
+        shuffled = official_train_images.copy()
+        rng.shuffle(shuffled)
+
+        val_count = max(1, int(0.1 * len(shuffled)))
+        train_images = set(shuffled[:-val_count])
+        val_images = set(shuffled[-val_count:])
+        test_images = {trial["image_id"] for trial in official_test_trials}
+
+        self.image_splits = {
+            "train": train_images,
+            "val": val_images,
+            "test": test_images,
+        }
+
+        for trial in all_trials:
+            if trial["trial_type"] == "test":
+                trial["assigned_split"] = "test"
+            elif trial["image_id"] in val_images:
+                trial["assigned_split"] = "val"
+            else:
+                trial["assigned_split"] = "train"
+
+        return np.array(
+            [trial["trial_idx"] for trial in all_trials if trial["assigned_split"] == "train"],
+            dtype=int,
+        )
+
+    def _assign_random_strict_splits(self, all_trials):
+        unique_images = sorted({trial["image_id"] for trial in all_trials})
+        if not unique_images:
+            raise ValueError(
+                "No fMRI image IDs remain after preprocessing/filtering. "
+                "Check shared-image settings and stimulus metadata."
+            )
+
+        rng = np.random.RandomState(42)
+        shuffled = unique_images.copy()
+        rng.shuffle(shuffled)
+
+        train_end = int(0.8 * len(shuffled))
+        val_end = int(0.9 * len(shuffled))
+
+        train_images = set(shuffled[:train_end])
+        val_images = set(shuffled[train_end:val_end])
+        test_images = set(shuffled[val_end:])
+        self.image_splits = {
+            "train": train_images,
+            "val": val_images,
+            "test": test_images,
+        }
+
+        for trial in all_trials:
+            if trial["image_id"] in train_images:
+                trial["assigned_split"] = "train"
+            elif trial["image_id"] in val_images:
+                trial["assigned_split"] = "val"
+            else:
+                trial["assigned_split"] = "test"
+
+        return np.array(
+            [trial["trial_idx"] for trial in all_trials if trial["assigned_split"] == "train"],
+            dtype=int,
+        )

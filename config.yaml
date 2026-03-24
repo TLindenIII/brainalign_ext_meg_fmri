@@ -11,6 +11,7 @@ data:
   # MEG and fMRI point to BIDS derivatives/sourcedata
   meg_dir: "data/things-meg-ds004212"
   fmri_dir: "data/things-fmri-ds004192"
+  fmri_split_mode: "official_repeats"
 
   # Directory to store the CLIP features cache
   clip_cache_dir: "clip_cache"
