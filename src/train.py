@@ -9,6 +9,7 @@ from pathlib import Path
 # Local imports
 from src.models.contrastive_model import BrainAlignModel
 from src.models.fmri_model import fMRIAlignModel
+from src.models.meg_model import MEGAlignModel
 from src.models.loss import clip_loss
 from src.data.eeg_loader import THINGSEEG2Dataset
 from src.data.meg_loader import THINGSMEGDataset
@@ -19,7 +20,7 @@ from src.evaluate import evaluate
 def checkpoint_stem_for(modality, subject, shared_only=False):
     stem = f"{modality}_brainalign_sub{subject:02d}"
     if modality == "meg":
-        stem += "_attnpool"
+        stem += "_temporalcnn"
     if shared_only:
         stem += "_shared"
     return stem
@@ -27,6 +28,19 @@ def checkpoint_stem_for(modality, subject, shared_only=False):
 def load_config(config_path="config.yaml"):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
+
+
+def selection_metric_name(config, modality):
+    configured = config.get("training", {}).get("selection_metric", {}).get(modality)
+    if configured:
+        return configured
+    return "top1" if modality == "eeg" else "mrr"
+
+
+def selection_metric_value(metrics, metric_name):
+    if metric_name not in metrics:
+        raise KeyError(f"Metric '{metric_name}' not available in evaluation output")
+    return metrics[metric_name]
 
 def get_dataloader(config, modality, split, subject=1, shared_only=False):
     """
@@ -150,6 +164,19 @@ def train(
             tau_init=config["model"]["temperature_init"]
         ).to(device)
         print(f"Using fMRIAlignModel: {n_voxels} voxels → 512-dim CLIP space")
+    elif modality == "meg":
+        model = MEGAlignModel(
+            in_channels=in_channels,
+            seq_len=seq_len,
+            clip_dim=512,
+            hidden_dim=config["model"].get("meg_hidden_dim", 256),
+            dropout=config["model"].get("meg_dropout", 0.2),
+            tau_init=config["model"]["temperature_init"],
+        ).to(device)
+        print(
+            f"Using MEGAlignModel: {in_channels} sensors × {seq_len} timepoints "
+            f"→ {config['model'].get('meg_hidden_dim', 256)} hidden channels"
+        )
     else:
         model = BrainAlignModel(
             in_channels=in_channels,
@@ -160,7 +187,10 @@ def train(
             modality=modality,
         ).to(device)
     
-    print("Fine-tuning the entire model end-to-end (including the pretrained CBraMod backbone).")
+    if modality == "eeg":
+        print("Fine-tuning the entire model end-to-end (including the pretrained CBraMod backbone).")
+    else:
+        print("Training the modality-specific alignment model end-to-end.")
     lr = float(config["training"]["learning_rate"])
     
     # BrainAlign and Modality Conversion both specify AdamW with 1e-3 weight decay for ALL models
@@ -254,10 +284,15 @@ def train(
             top1 = metrics['top1']
             top5 = metrics['top5']
             two_way = metrics['two_way']
-            print(f"--> Val Epoch {epoch+1} | Top-1: {top1:.2f}% | Top-5: {top5:.2f}% | 2-way: {two_way:.2f}%")
-            
-            # Use 2-way accuracy for fMRI, Top-1 for others as the primary metric
-            current_metric = two_way if modality == "fmri" else top1
+            mrr = metrics['mrr']
+            mean_rank = metrics['mean_rank']
+            metric_name = selection_metric_name(config, modality)
+            current_metric = selection_metric_value(metrics, metric_name)
+            print(
+                f"--> Val Epoch {epoch+1} | Top-1: {top1:.2f}% | Top-5: {top5:.2f}% | "
+                f"2-way: {two_way:.2f}% | MRR: {mrr:.2f}% | Mean rank: {mean_rank:.2f} | "
+                f"Select: {metric_name}={current_metric:.2f}"
+            )
             
             # Only save the best checkpoint
             if current_metric > best_val_metric:

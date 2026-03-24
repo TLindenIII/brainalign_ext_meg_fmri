@@ -11,6 +11,7 @@ from src.data.fmri_loader import THINGSfMRIDataset
 from src.data.meg_loader import THINGSMEGDataset
 from src.models.contrastive_model import BrainAlignModel
 from src.models.fmri_model import fMRIAlignModel
+from src.models.meg_model import MEGAlignModel
 
 
 def load_config(config_path="config.yaml"):
@@ -92,6 +93,16 @@ def build_model(config, modality, sample_x, device):
         model = fMRIAlignModel(
             n_voxels=sample_x.shape[0],
             clip_dim=512,
+            tau_init=config["model"]["temperature_init"],
+        )
+    elif modality == "meg":
+        in_channels, seq_len = sample_x.shape
+        model = MEGAlignModel(
+            in_channels=in_channels,
+            seq_len=seq_len,
+            clip_dim=512,
+            hidden_dim=config["model"].get("meg_hidden_dim", 256),
+            dropout=config["model"].get("meg_dropout", 0.2),
             tau_init=config["model"]["temperature_init"],
         )
     else:
@@ -178,14 +189,27 @@ def compute_retrieval_metrics(similarity_matrix):
 
     candidate_count = similarity_matrix.shape[0]
     if candidate_count == 0:
-        return {"top1": 0.0, "top5": 0.0, "two_way": 0.0, "count": 0}
+        return {
+            "top1": 0.0,
+            "top5": 0.0,
+            "two_way": 0.0,
+            "mrr": 0.0,
+            "mean_rank": 0.0,
+            "median_rank": 0.0,
+            "count": 0,
+        }
 
     labels = np.arange(candidate_count)
     ranking = np.argsort(similarity_matrix, axis=1)[:, ::-1]
     top_k = min(5, candidate_count)
+    rank_positions = np.argmax(ranking == labels[:, None], axis=1)
+    ranks = rank_positions + 1
 
     top1 = float((ranking[:, 0] == labels).mean() * 100.0)
     top5 = float(np.any(ranking[:, :top_k] == labels[:, None], axis=1).mean() * 100.0)
+    mrr = float(np.mean(1.0 / ranks) * 100.0)
+    mean_rank = float(np.mean(ranks))
+    median_rank = float(np.median(ranks))
 
     if candidate_count == 1:
         two_way = 0.0
@@ -198,6 +222,9 @@ def compute_retrieval_metrics(similarity_matrix):
         "top1": top1,
         "top5": top5,
         "two_way": two_way,
+        "mrr": mrr,
+        "mean_rank": mean_rank,
+        "median_rank": median_rank,
         "count": candidate_count,
     }
 

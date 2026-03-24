@@ -147,9 +147,16 @@ class THINGSMEGDataset(Dataset):
                 f"Skipped {skipped_unmapped_events} unmapped MEG events "
                 f"(not present in the THINGS image map up to {max_valid_event_id}, e.g. button-press markers)."
             )
-        
-        # Optional: Normalize channels to Z-score across time standard practice
-        # self.meg_data = (self.meg_data - self.meg_data.mean(axis=2, keepdims=True)) / (self.meg_data.std(axis=2, keepdims=True) + 1e-6)
+
+        # Match the reference preprocessing more closely by standardizing each
+        # channel within each epoch after cropping/resampling.
+        self._log("Centering and standardizing MEG epochs channel-wise...")
+        epoch_mean = self.meg_data.mean(axis=2, keepdims=True, dtype=np.float32)
+        epoch_std = self.meg_data.std(axis=2, keepdims=True, dtype=np.float32)
+        np.maximum(epoch_std, 1e-6, out=epoch_std)
+        self.meg_data -= epoch_mean
+        self.meg_data /= epoch_std
+        np.nan_to_num(self.meg_data, copy=False)
         
         # Enforce intersection filtering
         if self.shared_images:

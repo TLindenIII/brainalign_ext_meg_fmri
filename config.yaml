@@ -19,6 +19,8 @@ model:
   clip_name: "ViT-B/32"
   brain_encoder: "CBraMod"
   projection_dim: 512
+  meg_hidden_dim: 256
+  meg_dropout: 0.2
   temperature_init: 0.07 # standard CLIP value
 
 training:
@@ -26,6 +28,10 @@ training:
     eeg: 32
     meg: 32
     fmri: 256
+  selection_metric:
+    eeg: top1
+    meg: mrr
+    fmri: mrr
   learning_rate: 3e-4
   epochs:
     eeg: 35
