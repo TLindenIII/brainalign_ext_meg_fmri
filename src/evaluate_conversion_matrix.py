@@ -39,11 +39,20 @@ def parse_subject_spec(spec):
 
 def default_checkpoint_path(modality, subject, shared_only=False):
     stem = f"{modality}_brainalign_sub{subject:02d}"
+    shared_suffix = "_shared" if shared_only else ""
+    base_dir = Path("checkpoints") / modality
+
     if modality == "meg":
-        stem += "_attnpool"
-    if shared_only:
-        stem += "_shared"
-    return Path("checkpoints") / modality / f"{stem}_best.pt"
+        candidates = [
+            base_dir / f"{stem}_temporalcnn{shared_suffix}_best.pt",
+            base_dir / f"{stem}_attnpool{shared_suffix}_best.pt",
+        ]
+        for candidate in candidates:
+            if candidate.exists():
+                return candidate
+        return candidates[0]
+
+    return base_dir / f"{stem}{shared_suffix}_best.pt"
 
 
 def resolve_checkpoint_path(modality, subject, pattern=None, shared_only=False):
@@ -228,7 +237,7 @@ if __name__ == "__main__":
         "--target-ckpt-pattern",
         type=str,
         default=None,
-        help="Optional target checkpoint pattern, e.g. checkpoints/meg/meg_brainalign_sub{subject:02d}_attnpool_best.pt",
+        help="Optional target checkpoint pattern, e.g. checkpoints/meg/meg_brainalign_sub{subject:02d}_temporalcnn_best.pt",
     )
     parser.add_argument(
         "--source-shared-checkpoints",

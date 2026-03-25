@@ -46,7 +46,7 @@ if __name__ == "__main__":
         "--target-ckpt-pattern",
         type=str,
         default=None,
-        help="Optional target checkpoint pattern, e.g. checkpoints/meg/meg_brainalign_sub{subject02}_attnpool_best.pt",
+        help="Optional target checkpoint pattern, e.g. checkpoints/meg/meg_brainalign_sub{subject02}_temporalcnn_best.pt",
     )
     parser.add_argument(
         "--source-shared-checkpoints",

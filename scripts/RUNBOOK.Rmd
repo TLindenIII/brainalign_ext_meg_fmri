@@ -169,7 +169,7 @@ Windows PowerShell:
 .\scripts\train_all_subjects.ps1 -Modality fmri -Resume
 ```
 
-The MEG checkpoints now use the `_attnpool` stem.
+The MEG checkpoints now use the `_temporalcnn` stem.
 
 ## 5. Evaluate full-data retrieval models
 
@@ -183,7 +183,7 @@ Example for subject 1:
 ./.venv/bin/python scripts/evaluate_retrieval.py \
   --modality meg \
   --subject 1 \
-  --ckpt checkpoints/meg/meg_brainalign_sub01_attnpool_best.pt \
+  --ckpt checkpoints/meg/meg_brainalign_sub01_temporalcnn_best.pt \
   --split test
 ```
 
@@ -245,7 +245,7 @@ This is optional but useful to confirm the shared-subset models are healthy befo
   --subject 1 \
   --shared-only \
   --shared-manifest data/manifests/intersections/fmri_meg.txt \
-  --ckpt checkpoints/meg/meg_brainalign_sub01_attnpool_shared_best.pt \
+  --ckpt checkpoints/meg/meg_brainalign_sub01_temporalcnn_shared_best.pt \
   --split test
 ```
 
@@ -267,7 +267,7 @@ Once both shared-only checkpoints exist:
 ./.venv/bin/python scripts/evaluate_conversion.py \
   --source-modality meg \
   --source-subject 1 \
-  --source-ckpt checkpoints/meg/meg_brainalign_sub01_attnpool_shared_best.pt \
+  --source-ckpt checkpoints/meg/meg_brainalign_sub01_temporalcnn_shared_best.pt \
   --target-modality fmri \
   --target-subject 3 \
   --target-ckpt checkpoints/fmri/fmri_brainalign_sub03_shared_best.pt \
@@ -295,13 +295,13 @@ Run these in this order:
 6. `./.venv/bin/python scripts/build_clip_cache.py --manifest data/manifests/all_modalities_union.tsv --image-root data/things-images`
 7. `./scripts/train_all_subjects.sh --modality meg --resume`
 8. `./scripts/train_all_subjects.sh --modality fmri --resume`
-9. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --ckpt checkpoints/meg/meg_brainalign_sub<id>_attnpool_best.pt --split test`
+9. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --ckpt checkpoints/meg/meg_brainalign_sub<id>_temporalcnn_best.pt --split test`
 10. `./.venv/bin/python scripts/evaluate_retrieval.py --modality fmri --subject <id> --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_best.pt --split test`
 11. `./scripts/train_all_subjects.sh --modality meg --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --resume`
 12. `./scripts/train_all_subjects.sh --modality fmri --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --resume`
-13. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --ckpt checkpoints/meg/meg_brainalign_sub<id>_attnpool_shared_best.pt --split test`
+13. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --ckpt checkpoints/meg/meg_brainalign_sub<id>_temporalcnn_shared_best.pt --split test`
 14. `./.venv/bin/python scripts/evaluate_retrieval.py --modality fmri --subject <id> --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_shared_best.pt --split test`
-15. `./.venv/bin/python scripts/evaluate_conversion.py --source-modality meg --source-subject <meg_id> --source-ckpt checkpoints/meg/meg_brainalign_sub<meg_id>_attnpool_shared_best.pt --target-modality fmri --target-subject <fmri_id> --target-ckpt checkpoints/fmri/fmri_brainalign_sub<fmri_id>_shared_best.pt --shared-manifest data/manifests/intersections/fmri_meg.txt --split test`
+15. `./.venv/bin/python scripts/evaluate_conversion.py --source-modality meg --source-subject <meg_id> --source-ckpt checkpoints/meg/meg_brainalign_sub<meg_id>_temporalcnn_shared_best.pt --target-modality fmri --target-subject <fmri_id> --target-ckpt checkpoints/fmri/fmri_brainalign_sub<fmri_id>_shared_best.pt --shared-manifest data/manifests/intersections/fmri_meg.txt --split test`
 
 If the PC is running Windows PowerShell, replace steps 7, 8, 11, and 12 with:
 

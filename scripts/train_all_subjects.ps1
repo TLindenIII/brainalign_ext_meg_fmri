@@ -45,7 +45,7 @@ if ($SubjectIds.Count -eq 0) {
 }
 
 $CheckpointSuffix = if ($SharedOnly) { "_shared" } else { "" }
-$CheckpointStemExtra = if ($Modality -eq "meg") { "_attnpool" } else { "" }
+$CheckpointStemExtra = if ($Modality -eq "meg") { "_temporalcnn" } else { "" }
 $PythonExe = if (Test-Path ".\.venv\Scripts\python.exe") {
     ".\.venv\Scripts\python.exe"
 } elseif (Test-Path ".\venv\Scripts\python.exe") {

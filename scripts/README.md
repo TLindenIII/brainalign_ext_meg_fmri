@@ -44,7 +44,7 @@ Checkpoint naming:
 
 - EEG: `checkpoints/eeg/eeg_brainalign_sub01_best.pt`
 - fMRI: `checkpoints/fmri/fmri_brainalign_sub01_best.pt`
-- MEG: `checkpoints/meg/meg_brainalign_sub01_attnpool_best.pt`
+- MEG: `checkpoints/meg/meg_brainalign_sub01_temporalcnn_best.pt`
 - Shared-only runs add `_shared` before `_best.pt` / `_latest.pt`
 
 ### Evaluation scripts
@@ -57,6 +57,9 @@ Checkpoint naming:
 - `scripts/evaluate_conversion_matrix.py`
   - Evaluates all subject-pair conversions for two modalities while loading each subject only once.
   - Writes the same per-pair `results/conversion/*.txt` files as `scripts/evaluate_conversion.py`.
+- `scripts/evaluate_all.py`
+  - One-shot post-training runner for retrieval, shared-only retrieval, conversion matrix evaluation, and summary generation.
+  - Defaults to the MEG/fMRI workflow and auto-discovers subjects from `*_best.pt` checkpoints.
 - `scripts/evaluate_eeg_table.py`
   - EEG-only summary table generator.
 - `scripts/summarize_results.py`

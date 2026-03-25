@@ -66,7 +66,7 @@ fi
 
 CHECKPOINT_STEM_EXTRA=""
 if [ "$MODALITY" = "meg" ]; then
-    CHECKPOINT_STEM_EXTRA="_attnpool"
+    CHECKPOINT_STEM_EXTRA="_temporalcnn"
 fi
 
 for i in "${SUBJECT_IDS[@]}"
