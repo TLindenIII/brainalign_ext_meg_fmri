@@ -1,16 +1,16 @@
 --- Conversion Results (MEG sub-03 <-> FMRI sub-01) ---
-Source checkpoint: checkpoints/meg/meg_brainalign_sub03_attnpool_best.pt
-Target checkpoint: checkpoints/fmri/fmri_brainalign_sub01_best.pt
+Source checkpoint: checkpoints\meg\meg_brainalign_sub03_temporalcnn_best.pt
+Target checkpoint: checkpoints\fmri\fmri_brainalign_sub01_best.pt
 Split: test
 Shared-only images: True
-Aligned shared test images: 874
+Aligned shared test images: 15
 
 meg_to_fmri
-Top-1 Retrieval: 1.03%
-Top-5 Retrieval: 2.17%
-CLIP 2-Way:      70.82%
+Top-1 Retrieval: 80.00%
+Top-5 Retrieval: 93.33%
+CLIP 2-Way:      96.67%
 
 fmri_to_meg
-Top-1 Retrieval: 0.80%
-Top-5 Retrieval: 2.75%
-CLIP 2-Way:      70.83%
+Top-1 Retrieval: 93.33%
+Top-5 Retrieval: 100.00%
+CLIP 2-Way:      99.52%

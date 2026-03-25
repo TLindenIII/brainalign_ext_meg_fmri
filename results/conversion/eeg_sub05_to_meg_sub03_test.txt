@@ -1,16 +1,16 @@
 --- Conversion Results (EEG sub-05 <-> MEG sub-03) ---
 Source checkpoint: checkpoints\eeg\eeg_brainalign_sub05_best.pt
-Target checkpoint: checkpoints\meg\meg_brainalign_sub03_attnpool_best.pt
+Target checkpoint: checkpoints\meg\meg_brainalign_sub03_temporalcnn_best.pt
 Split: test
 Shared-only images: True
 Aligned shared test images: 172
 
 eeg_to_meg
-Top-1 Retrieval: 2.91%
-Top-5 Retrieval: 11.63%
-CLIP 2-Way:      73.36%
+Top-1 Retrieval: 9.30%
+Top-5 Retrieval: 19.77%
+CLIP 2-Way:      79.69%
 
 meg_to_eeg
-Top-1 Retrieval: 1.74%
-Top-5 Retrieval: 12.79%
-CLIP 2-Way:      73.34%
+Top-1 Retrieval: 6.98%
+Top-5 Retrieval: 20.35%
+CLIP 2-Way:      80.71%
