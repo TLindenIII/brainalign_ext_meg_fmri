@@ -42,6 +42,7 @@ class THINGSfMRIDataset(Dataset):
         self.fmri_dir = Path(fmri_dir)
         self.split = split
         self.split_mode = split_mode
+        self.effective_split_mode = split_mode
         self.transform = transform
         self.subject = subject
         self.shared_only = shared_only
@@ -149,7 +150,7 @@ class THINGSfMRIDataset(Dataset):
             raise ValueError("Split must be 'train', 'val', 'test', or 'all'")
 
         self._log(
-            f"fMRI {sub_str} | {self.split} ({self.split_mode}): {len(self.trials)} trials | "
+            f"fMRI {sub_str} | {self.split} ({self.effective_split_mode}): {len(self.trials)} trials | "
             f"{self.n_voxels} selected voxels"
         )
         
@@ -203,6 +204,20 @@ class THINGSfMRIDataset(Dataset):
         official_train_trials = [trial for trial in all_trials if trial["trial_type"] == "train"]
         official_test_trials = [trial for trial in all_trials if trial["trial_type"] == "test"]
         if not official_train_trials or not official_test_trials:
+            if self.shared_only:
+                available_groups = []
+                if official_train_trials:
+                    available_groups.append("train")
+                if official_test_trials:
+                    available_groups.append("test")
+                available_text = ", ".join(available_groups) if available_groups else "none"
+                self._log(
+                    "Shared-manifest filtering removed one side of the official fMRI split "
+                    f"(available trial_type groups: {available_text}). "
+                    "Falling back to deterministic random_strict splitting for this shared subset."
+                )
+                self.effective_split_mode = "random_strict_fallback"
+                return self._assign_random_strict_splits(all_trials)
             raise ValueError(
                 "official_repeats requires metadata 'trial_type' values for both train and test rows"
             )
