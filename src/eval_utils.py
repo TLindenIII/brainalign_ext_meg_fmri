@@ -31,6 +31,8 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
     clip_cache_path = get_clip_cache_path(config)
     shared_manifest_path = config["data"].get("shared_manifest_path")
     things_image_map_path = config["data"].get("things_image_map_path")
+    manifests_dir = config["data"].get("manifests_dir", "data/manifests")
+    meg_split_mode = config["data"].get("meg_split_mode", "fixed_image_holdout")
     fmri_split_mode = config["data"].get("fmri_split_mode", "official_repeats")
 
     if modality == "eeg":
@@ -52,6 +54,8 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
             things_image_map_path=things_image_map_path,
+            split_mode=meg_split_mode,
+            split_manifest_dir=os.path.join(manifests_dir, "splits", "meg", meg_split_mode),
             quiet=quiet,
         )
     if modality == "fmri":

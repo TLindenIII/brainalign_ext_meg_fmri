@@ -41,6 +41,8 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
     shared_manifest_path = config["data"].get("shared_manifest_path")
     things_image_map_path = config["data"].get("things_image_map_path")
+    manifests_dir = config["data"].get("manifests_dir", "data/manifests")
+    meg_split_mode = config["data"].get("meg_split_mode", "fixed_image_holdout")
     fmri_split_mode = config["data"].get("fmri_split_mode", "official_repeats")
     
     if modality == "eeg":
@@ -61,6 +63,8 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
             things_image_map_path=things_image_map_path,
+            split_mode=meg_split_mode,
+            split_manifest_dir=os.path.join(manifests_dir, "splits", "meg", meg_split_mode),
         )
     elif modality == "fmri":
         dataset = THINGSfMRIDataset(
@@ -89,6 +93,13 @@ def get_meg_train_val_dataloaders(config, subject=1, shared_only=False):
         shared_only=shared_only,
         shared_manifest_path=config["data"].get("shared_manifest_path"),
         things_image_map_path=config["data"].get("things_image_map_path"),
+        split_mode=config["data"].get("meg_split_mode", "fixed_image_holdout"),
+        split_manifest_dir=os.path.join(
+            config["data"].get("manifests_dir", "data/manifests"),
+            "splits",
+            "meg",
+            config["data"].get("meg_split_mode", "fixed_image_holdout"),
+        ),
     )
 
     train_images = full_dataset.image_splits["train"]

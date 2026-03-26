@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from src.data.image_manifest import (
+    ensure_eeg_style_meg_split_lists,
     build_intersection_map,
     build_things_image_map_records,
     dedupe_named_records,
@@ -21,6 +22,7 @@ from src.data.image_manifest import (
     resolve_repo_path,
     resolve_things_image_list_path,
     resolve_things_image_map_path,
+    split_manifests_dir_from_config,
     write_image_id_list,
     write_manifest_tsv,
 )
@@ -48,8 +50,10 @@ def main(config_path):
     config = load_config(config_path)
     manifests_dir = manifests_dir_from_config(config)
     intersections_dir = manifests_dir / "intersections"
+    meg_split_dir = split_manifests_dir_from_config(config, "meg", "fixed_image_holdout")
     manifests_dir.mkdir(parents=True, exist_ok=True)
     intersections_dir.mkdir(parents=True, exist_ok=True)
+    meg_split_dir.mkdir(parents=True, exist_ok=True)
 
     eeg_records = load_eeg_image_records(config["data"]["eeg_dir"])
     fmri_records = load_fmri_image_records(config["data"]["fmri_dir"])
@@ -92,6 +96,15 @@ def main(config_path):
         print(f"Warning: {len(unmapped_numbers)} MEG image numbers were not found in the THINGS image map.")
 
     write_manifest_tsv(manifests_dir / "meg_all.tsv", meg_records)
+    ensure_eeg_style_meg_split_lists(
+        meg_split_dir,
+        [record["image_id"] for record in meg_records],
+        seed=42,
+        test_concept_count=200,
+        val_ratio=0.1,
+        overwrite=True,
+    )
+    print(f"MEG fixed-image split manifests: {meg_split_dir}")
 
     all_records = dedupe_named_records(eeg_records + fmri_records + meg_records)
     write_manifest_tsv(manifests_dir / "all_modalities_union.tsv", all_records)

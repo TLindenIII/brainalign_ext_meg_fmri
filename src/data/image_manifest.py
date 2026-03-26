@@ -34,6 +34,15 @@ def manifests_dir_from_config(config):
     return resolve_repo_path(config["data"].get("manifests_dir", "data/manifests"))
 
 
+def split_manifests_dir_from_config(config, modality=None, split_mode=None):
+    path = manifests_dir_from_config(config) / "splits"
+    if modality:
+        path = path / modality
+    if split_mode:
+        path = path / split_mode
+    return path
+
+
 def resolve_things_image_map_path(config=None, explicit_path=None):
     if explicit_path:
         resolved = resolve_repo_path(explicit_path)
@@ -390,6 +399,114 @@ def write_image_id_list(path, image_ids):
     with open(path, "w") as handle:
         for image_id in sorted(set(image_ids)):
             handle.write(f"{image_id}\n")
+
+
+def ensure_image_split_lists(split_dir, image_ids, seed=42, ratios=(0.8, 0.1, 0.1), overwrite=False):
+    split_dir = resolve_repo_path(split_dir)
+    split_dir.mkdir(parents=True, exist_ok=True)
+
+    train_path = split_dir / "train.txt"
+    val_path = split_dir / "val.txt"
+    test_path = split_dir / "test.txt"
+    if not overwrite and train_path.exists() and val_path.exists() and test_path.exists():
+        return
+
+    unique_images = sorted(set(image_ids))
+    if not unique_images:
+        raise ValueError(f"Cannot build split manifests under {split_dir}: no image IDs provided")
+
+    if len(ratios) != 3 or abs(sum(ratios) - 1.0) > 1e-6:
+        raise ValueError("Split ratios must be a 3-tuple summing to 1.0")
+
+    rng = np.random.RandomState(seed)
+    shuffled = unique_images.copy()
+    rng.shuffle(shuffled)
+
+    train_end = int(ratios[0] * len(shuffled))
+    val_end = int((ratios[0] + ratios[1]) * len(shuffled))
+    train_ids = shuffled[:train_end]
+    val_ids = shuffled[train_end:val_end]
+    test_ids = shuffled[val_end:]
+
+    write_image_id_list(train_path, train_ids)
+    write_image_id_list(val_path, val_ids)
+    write_image_id_list(test_path, test_ids)
+
+
+def ensure_eeg_style_meg_split_lists(
+    split_dir,
+    image_ids,
+    seed=42,
+    test_concept_count=200,
+    val_ratio=0.1,
+    overwrite=False,
+):
+    split_dir = resolve_repo_path(split_dir)
+    split_dir.mkdir(parents=True, exist_ok=True)
+
+    train_path = split_dir / "train.txt"
+    val_path = split_dir / "val.txt"
+    test_path = split_dir / "test.txt"
+    excluded_path = split_dir / "excluded.txt"
+    if (
+        not overwrite
+        and train_path.exists()
+        and val_path.exists()
+        and test_path.exists()
+        and excluded_path.exists()
+    ):
+        return
+
+    concept_to_images = defaultdict(list)
+    for image_id in sorted(set(image_ids)):
+        concept_to_images[image_id.rsplit("_", 1)[0]].append(image_id)
+
+    concepts = sorted(concept_to_images)
+    if len(concepts) < test_concept_count:
+        raise ValueError(
+            f"Cannot build EEG-style MEG split with {test_concept_count} test concepts; "
+            f"only {len(concepts)} concepts are available."
+        )
+
+    rng = np.random.RandomState(seed)
+    shuffled_concepts = concepts.copy()
+    rng.shuffle(shuffled_concepts)
+    test_concepts = set(shuffled_concepts[:test_concept_count])
+
+    test_ids = []
+    excluded_ids = []
+    remaining_ids = []
+    for concept in concepts:
+        concept_images = sorted(concept_to_images[concept])
+        if concept in test_concepts:
+            picked_index = int(rng.randint(len(concept_images)))
+            picked_image = concept_images[picked_index]
+            test_ids.append(picked_image)
+            excluded_ids.extend(image_id for image_id in concept_images if image_id != picked_image)
+        else:
+            remaining_ids.extend(concept_images)
+
+    remaining_ids = sorted(remaining_ids)
+    rng.shuffle(remaining_ids)
+    val_count = int(round(val_ratio * len(remaining_ids)))
+    val_ids = remaining_ids[:val_count]
+    train_ids = remaining_ids[val_count:]
+
+    write_image_id_list(train_path, train_ids)
+    write_image_id_list(val_path, val_ids)
+    write_image_id_list(test_path, test_ids)
+    write_image_id_list(excluded_path, excluded_ids)
+
+
+def load_image_split_lists(split_dir):
+    split_dir = resolve_repo_path(split_dir)
+    splits = {}
+    for split_name in ("train", "val", "test"):
+        path = split_dir / f"{split_name}.txt"
+        if not path.exists():
+            raise FileNotFoundError(f"Split manifest not found: {path}")
+        splits[split_name] = load_named_image_ids(path)
+    return splits
 
 
 def build_intersection_map(named_sets):

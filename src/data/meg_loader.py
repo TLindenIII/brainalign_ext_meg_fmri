@@ -6,6 +6,8 @@ import torch
 from torch.utils.data import Dataset
 
 from src.data.image_manifest import (
+    ensure_eeg_style_meg_split_lists,
+    load_image_split_lists,
     load_named_image_ids,
     load_things_image_map,
     resolve_repo_path,
@@ -37,13 +39,18 @@ class THINGSMEGDataset(Dataset):
         shared_only=False,
         shared_manifest_path=None,
         things_image_map_path=None,
+        split_mode="fixed_image_holdout",
+        split_manifest_dir=None,
         quiet=False,
     ):
         self.meg_dir = Path(meg_dir)
         self.split = split
+        self.split_mode = split_mode
+        self.effective_split_mode = split_mode
         self.transform = transform
         self.subject = subject
         self.shared_only = shared_only
+        self.split_manifest_dir = resolve_repo_path(split_manifest_dir) if split_manifest_dir else None
         self.quiet = quiet
         self._log = print if not self.quiet else (lambda *args, **kwargs: None)
         
@@ -163,44 +170,27 @@ class THINGSMEGDataset(Dataset):
             self.trials = [t for t in self.trials if t["image_id"] in self.shared_images]
             self._log(f"Retained {len(self.trials)} MEG trials after shared-image filtering")
             
-        # Split logic: Seeded 3-way split by fundamental Image ID to avoid data leak.
         unique_images = sorted(list(set(t["image_id"] for t in self.trials)))
         if not unique_images:
             raise ValueError(
                 "No MEG image IDs remain after preprocessing/filtering. "
                 "Check event mapping and shared-image settings."
             )
-
-        np.random.seed(42)  # Critical for split alignment across MEG/fMRI
-        shuffled = unique_images.copy()
-        np.random.shuffle(shuffled)
-        
-        train_end = int(0.8 * len(shuffled))
-        val_end = int(0.9 * len(shuffled))
-        
-        train_images = set(shuffled[:train_end])
-        val_images = set(shuffled[train_end:val_end])
-        test_images = set(shuffled[val_end:])
-        
-        self.image_splits = {
-            "train": train_images,
-            "val": val_images,
-            "test": test_images,
-        }
+        self.image_splits = self._build_image_splits(unique_images)
 
         if self.split == "train":
-            self.trials = [t for t in self.trials if t["image_id"] in train_images]
+            self.trials = [t for t in self.trials if t["image_id"] in self.image_splits["train"]]
         elif self.split == "val":
-            self.trials = [t for t in self.trials if t["image_id"] in val_images]
+            self.trials = [t for t in self.trials if t["image_id"] in self.image_splits["val"]]
         elif self.split == "test":
-            self.trials = [t for t in self.trials if t["image_id"] in test_images]
+            self.trials = [t for t in self.trials if t["image_id"] in self.image_splits["test"]]
         elif self.split == "all":
             pass
         else:
             raise ValueError("Split must be 'train', 'val', 'test', or 'all'")
             
         self._log(
-            f"MEG Sub-{subject:02d} | {self.split}: {len(self.trials)} trials | "
+            f"MEG Sub-{subject:02d} | {self.split} ({self.effective_split_mode}): {len(self.trials)} trials | "
             f"Channels: {self.n_channels}, SeqLen: {self.seq_len}"
         )
         
@@ -228,4 +218,60 @@ class THINGSMEGDataset(Dataset):
             "image_id": image_id,
             "y_clip": y_clip,
             "meta": trial
+        }
+
+    def _build_image_splits(self, unique_images):
+        if self.split_mode == "fixed_image_holdout":
+            return self._fixed_image_holdout_splits(unique_images)
+        if self.split_mode == "random_strict":
+            return self._random_strict_splits(unique_images)
+        raise ValueError(
+            f"Unsupported MEG split mode '{self.split_mode}'. "
+            "Expected 'fixed_image_holdout' or 'random_strict'."
+        )
+
+    def _fixed_image_holdout_splits(self, unique_images):
+        split_dir = self.split_manifest_dir or Path("data/manifests/splits/meg/fixed_image_holdout")
+        ensure_eeg_style_meg_split_lists(
+            split_dir,
+            unique_images,
+            seed=42,
+            test_concept_count=200,
+            val_ratio=0.1,
+            overwrite=False,
+        )
+        saved_splits = load_image_split_lists(split_dir)
+        unique_image_set = set(unique_images)
+        image_splits = {
+            split_name: set(image_ids) & unique_image_set
+            for split_name, image_ids in saved_splits.items()
+        }
+
+        assigned = set().union(*image_splits.values())
+        excluded_path = split_dir / "excluded.txt"
+        excluded_images = load_named_image_ids(excluded_path) if excluded_path.exists() else set()
+        missing = unique_image_set - assigned - excluded_images
+        if missing:
+            raise ValueError(
+                f"MEG fixed-image split manifests under {split_dir} do not cover "
+                f"{len(missing)} current images. Rebuild the manifests."
+            )
+
+        if excluded_images:
+            self._log(f"Excluded {len(excluded_images & unique_image_set)} MEG images from held-out test concepts")
+        self._log(f"Using MEG fixed-image split manifests from {split_dir}")
+        return image_splits
+
+    def _random_strict_splits(self, unique_images):
+        rng = np.random.RandomState(42)
+        shuffled = unique_images.copy()
+        rng.shuffle(shuffled)
+
+        train_end = int(0.8 * len(shuffled))
+        val_end = int(0.9 * len(shuffled))
+        self.effective_split_mode = "random_strict"
+        return {
+            "train": set(shuffled[:train_end]),
+            "val": set(shuffled[train_end:val_end]),
+            "test": set(shuffled[val_end:]),
         }

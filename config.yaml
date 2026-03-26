@@ -10,6 +10,7 @@ data:
 
   # MEG and fMRI point to BIDS derivatives/sourcedata
   meg_dir: "data/things-meg-ds004212"
+  meg_split_mode: "fixed_image_holdout"
   fmri_dir: "data/things-fmri-ds004192"
   fmri_split_mode: "official_repeats"
 
