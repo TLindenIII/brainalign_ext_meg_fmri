@@ -12,7 +12,7 @@ evaluation_sub10_test_full.txt,eeg,10,test,False,200,checkpoints/eeg/eeg_brainal
 evaluation_sub01_test_full.txt,fmri,1,test,False,100,E:\Projects\brainalign_ext_meg_fmri\checkpoints\fmri\fmri_brainalign_sub01_best.pt,1.0,5.0,100,100,42.0,71.0,95.76,38.0,66.0,95.97
 evaluation_sub02_test_full.txt,fmri,2,test,False,100,E:\Projects\brainalign_ext_meg_fmri\checkpoints\fmri\fmri_brainalign_sub02_best.pt,1.0,5.0,100,100,32.0,72.0,93.55,30.0,74.0,93.91
 evaluation_sub03_test_full.txt,fmri,3,test,False,100,E:\Projects\brainalign_ext_meg_fmri\checkpoints\fmri\fmri_brainalign_sub03_best.pt,1.0,5.0,100,100,26.0,60.0,92.31,33.0,58.0,92.72
-evaluation_sub01_test_full.txt,meg,1,test,False,2245,E:\Projects\brainalign_ext_meg_fmri\checkpoints\meg\meg_brainalign_sub01_temporalcnn_best.pt,0.044543429844097995,0.22271714922049,2245,2245,0.8,2.72,79.7,0.36,2.81,80.18
-evaluation_sub02_test_full.txt,meg,2,test,False,2245,E:\Projects\brainalign_ext_meg_fmri\checkpoints\meg\meg_brainalign_sub02_temporalcnn_best.pt,0.044543429844097995,0.22271714922049,2245,2245,2.98,9.35,89.59,3.43,9.67,89.96
-evaluation_sub03_test_full.txt,meg,3,test,False,2245,E:\Projects\brainalign_ext_meg_fmri\checkpoints\meg\meg_brainalign_sub03_temporalcnn_best.pt,0.044543429844097995,0.22271714922049,2245,2245,1.6,5.7,84.47,1.47,5.66,84.81
-evaluation_sub04_test_full.txt,meg,4,test,False,2245,E:\Projects\brainalign_ext_meg_fmri\checkpoints\meg\meg_brainalign_sub04_temporalcnn_best.pt,0.044543429844097995,0.22271714922049,2245,2245,0.67,3.07,77.2,0.67,2.98,77.56
+evaluation_sub01_test_full.txt,meg,1,test,False,200,checkpoints\meg\meg_brainalign_sub01_temporalcnn_best.pt,0.5,2.5,200,200,4.5,16.0,77.84,7.5,17.5,78.37
+evaluation_sub02_test_full.txt,meg,2,test,False,200,checkpoints\meg\meg_brainalign_sub02_temporalcnn_best.pt,0.5,2.5,200,200,13.0,38.0,88.63,16.5,39.5,89.55
+evaluation_sub03_test_full.txt,meg,3,test,False,200,checkpoints\meg\meg_brainalign_sub03_temporalcnn_best.pt,0.5,2.5,200,200,11.0,34.0,87.74,11.5,37.5,88.57
+evaluation_sub04_test_full.txt,meg,4,test,False,200,checkpoints\meg\meg_brainalign_sub04_temporalcnn_best.pt,0.5,2.5,200,200,3.5,12.5,77.6,5.0,14.5,78.36
