@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.checkpoints import conversion_directory_name
 from src.data.csv_utils import read_text_table
 
 
@@ -41,6 +42,18 @@ def split_manifests_dir_from_config(config, modality=None, split_mode=None):
     if split_mode:
         path = path / split_mode
     return path
+
+
+def conversion_split_dir_from_config(config, shared_manifest_path=None, modalities=None):
+    return (
+        manifests_dir_from_config(config)
+        / "splits"
+        / "conversion"
+        / conversion_directory_name(
+            shared_manifest_path=shared_manifest_path,
+            modalities=modalities,
+        )
+    )
 
 
 def resolve_things_image_map_path(config=None, explicit_path=None):
@@ -121,6 +134,11 @@ def resolve_shared_manifest_path(shared_only, shared_manifest_path=None):
 def default_intersection_manifest_path(config, modalities):
     name = "_".join(sorted(modalities))
     return manifests_dir_from_config(config) / "intersections" / f"{name}.txt"
+
+
+def default_conversion_pool_manifest_path(config, modalities):
+    name = "_".join(sorted(modalities))
+    return manifests_dir_from_config(config) / "conversion_pools" / f"{name}.txt"
 
 
 def load_things_image_map(path):
@@ -235,12 +253,18 @@ def _load_things_image_map_table(path):
     return mapping
 
 
-def load_eeg_image_records(eeg_dir):
+def load_eeg_image_records(eeg_dir, include_train=True, include_test=True):
     eeg_dir = resolve_repo_path(eeg_dir)
     metadata = np.load(eeg_dir / "stimuli" / "image_metadata.npy", allow_pickle=True).item()
 
     records = []
-    for file_name in list(metadata["train_img_files"]) + list(metadata["test_img_files"]):
+    file_names = []
+    if include_train:
+        file_names.extend(list(metadata["train_img_files"]))
+    if include_test:
+        file_names.extend(list(metadata["test_img_files"]))
+
+    for file_name in file_names:
         image_id = Path(file_name).stem
         records.append(
             {
@@ -252,9 +276,12 @@ def load_eeg_image_records(eeg_dir):
     return dedupe_named_records(records)
 
 
-def load_fmri_image_records(fmri_dir):
+def load_fmri_image_records(fmri_dir, trial_types=None):
     fmri_dir = resolve_repo_path(fmri_dir)
     records = []
+    normalized_trial_types = None
+    if trial_types is not None:
+        normalized_trial_types = {str(value).strip().lower() for value in trial_types}
 
     raw_event_files = sorted(fmri_dir.rglob("*task-things*_events.tsv"))
     for event_file in raw_event_files:
@@ -263,7 +290,11 @@ def load_fmri_image_records(fmri_dir):
             continue
 
         if "trial_type" in df.columns:
-            df = df[df["trial_type"].isin(["exp", "test"])]
+            if normalized_trial_types is None:
+                df = df[df["trial_type"].isin(["exp", "test"])]
+            else:
+                trial_type_values = df["trial_type"].astype(str).str.strip().str.lower()
+                df = df[trial_type_values.isin(normalized_trial_types)]
 
         for file_path in df["file_path"].dropna():
             rel_path = str(file_path).strip().replace("\\", "/")
@@ -286,6 +317,9 @@ def load_fmri_image_records(fmri_dir):
         df = read_text_table(event_file, expected_columns={"stimulus"})
         if "stimulus" not in df.columns:
             continue
+        if "trial_type" in df.columns and normalized_trial_types is not None:
+            trial_type_values = df["trial_type"].astype(str).str.strip().str.lower()
+            df = df[trial_type_values.isin(normalized_trial_types)]
         for stim in df["stimulus"].dropna():
             image_id = Path(str(stim)).stem
             records.append(
@@ -491,6 +525,73 @@ def ensure_eeg_style_meg_split_lists(
     val_count = int(round(val_ratio * len(remaining_ids)))
     val_ids = remaining_ids[:val_count]
     train_ids = remaining_ids[val_count:]
+
+    write_image_id_list(train_path, train_ids)
+    write_image_id_list(val_path, val_ids)
+    write_image_id_list(test_path, test_ids)
+    write_image_id_list(excluded_path, excluded_ids)
+
+
+def ensure_shared_conversion_split_lists(
+    split_dir,
+    image_ids,
+    seed=42,
+    val_concept_count=100,
+    test_concept_count=200,
+    overwrite=False,
+):
+    split_dir = resolve_repo_path(split_dir)
+    split_dir.mkdir(parents=True, exist_ok=True)
+
+    train_path = split_dir / "train.txt"
+    val_path = split_dir / "val.txt"
+    test_path = split_dir / "test.txt"
+    excluded_path = split_dir / "excluded.txt"
+    if (
+        not overwrite
+        and train_path.exists()
+        and val_path.exists()
+        and test_path.exists()
+        and excluded_path.exists()
+    ):
+        return
+
+    concept_to_images = defaultdict(list)
+    for image_id in sorted(set(image_ids)):
+        concept_to_images[image_id.rsplit("_", 1)[0]].append(image_id)
+
+    concepts = sorted(concept_to_images)
+    required_concepts = val_concept_count + test_concept_count
+    if len(concepts) <= required_concepts:
+        raise ValueError(
+            f"Cannot build shared conversion split with {val_concept_count} val concepts and "
+            f"{test_concept_count} test concepts; only {len(concepts)} concepts are available."
+        )
+
+    rng = np.random.RandomState(seed)
+    shuffled_concepts = concepts.copy()
+    rng.shuffle(shuffled_concepts)
+    test_concepts = set(shuffled_concepts[:test_concept_count])
+    val_concepts = set(shuffled_concepts[test_concept_count : required_concepts])
+
+    train_ids = []
+    val_ids = []
+    test_ids = []
+    excluded_ids = []
+
+    for concept in concepts:
+        concept_images = sorted(concept_to_images[concept])
+        if concept in test_concepts:
+            picked_image = concept_images[int(rng.randint(len(concept_images)))]
+            test_ids.append(picked_image)
+            excluded_ids.extend(image_id for image_id in concept_images if image_id != picked_image)
+            continue
+        if concept in val_concepts:
+            picked_image = concept_images[int(rng.randint(len(concept_images)))]
+            val_ids.append(picked_image)
+            excluded_ids.extend(image_id for image_id in concept_images if image_id != picked_image)
+            continue
+        train_ids.extend(concept_images)
 
     write_image_id_list(train_path, train_ids)
     write_image_id_list(val_path, val_ids)

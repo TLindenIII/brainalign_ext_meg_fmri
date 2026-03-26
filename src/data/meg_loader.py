@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 
 from src.data.image_manifest import (
     ensure_eeg_style_meg_split_lists,
+    ensure_shared_conversion_split_lists,
     load_image_split_lists,
     load_named_image_ids,
     load_things_image_map,
@@ -38,6 +39,10 @@ class THINGSMEGDataset(Dataset):
         transform=None,
         shared_only=False,
         shared_manifest_path=None,
+        shared_split_dir=None,
+        shared_split_seed=42,
+        shared_val_concept_count=100,
+        shared_test_concept_count=200,
         things_image_map_path=None,
         split_mode="fixed_image_holdout",
         split_manifest_dir=None,
@@ -50,6 +55,10 @@ class THINGSMEGDataset(Dataset):
         self.transform = transform
         self.subject = subject
         self.shared_only = shared_only
+        self.shared_split_dir = resolve_repo_path(shared_split_dir) if shared_split_dir else None
+        self.shared_split_seed = shared_split_seed
+        self.shared_val_concept_count = shared_val_concept_count
+        self.shared_test_concept_count = shared_test_concept_count
         self.split_manifest_dir = resolve_repo_path(split_manifest_dir) if split_manifest_dir else None
         self.quiet = quiet
         self._log = print if not self.quiet else (lambda *args, **kwargs: None)
@@ -221,6 +230,8 @@ class THINGSMEGDataset(Dataset):
         }
 
     def _build_image_splits(self, unique_images):
+        if self.shared_only and self.shared_split_dir:
+            return self._shared_conversion_splits(unique_images)
         if self.split_mode == "fixed_image_holdout":
             return self._fixed_image_holdout_splits(unique_images)
         if self.split_mode == "random_strict":
@@ -275,3 +286,37 @@ class THINGSMEGDataset(Dataset):
             "val": set(shuffled[train_end:val_end]),
             "test": set(shuffled[val_end:]),
         }
+
+    def _shared_conversion_splits(self, unique_images):
+        unique_image_set = set(unique_images)
+        ensure_shared_conversion_split_lists(
+            self.shared_split_dir,
+            self.shared_images or unique_image_set,
+            seed=self.shared_split_seed,
+            val_concept_count=self.shared_val_concept_count,
+            test_concept_count=self.shared_test_concept_count,
+            overwrite=False,
+        )
+        saved_splits = load_image_split_lists(self.shared_split_dir)
+        image_splits = {
+            split_name: set(image_ids) & unique_image_set
+            for split_name, image_ids in saved_splits.items()
+        }
+
+        assigned = set().union(*image_splits.values())
+        excluded_path = self.shared_split_dir / "excluded.txt"
+        excluded_images = load_named_image_ids(excluded_path) if excluded_path.exists() else set()
+        missing = unique_image_set - assigned - excluded_images
+        if missing:
+            raise ValueError(
+                f"Shared conversion split manifests under {self.shared_split_dir} do not cover "
+                f"{len(missing)} current MEG images. Rebuild the manifests."
+            )
+
+        self.effective_split_mode = "shared_conversion_manifest"
+        if excluded_images:
+            self._log(
+                f"Excluded {len(excluded_images & unique_image_set)} shared MEG images from held-out concepts"
+            )
+        self._log(f"Using shared conversion split manifests from {self.shared_split_dir}")
+        return image_splits

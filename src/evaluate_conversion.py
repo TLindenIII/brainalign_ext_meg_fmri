@@ -12,7 +12,10 @@ from src.eval_utils import (
     load_checkpoint,
     load_config,
 )
-from src.data.image_manifest import default_intersection_manifest_path
+from src.data.image_manifest import (
+    default_conversion_pool_manifest_path,
+    default_intersection_manifest_path,
+)
 
 
 def build_loaded_model_and_loader(config, modality, checkpoint_path, subject, split, shared_only, device):
@@ -93,7 +96,9 @@ def main(
     if shared_manifest_path:
         config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
     else:
-        inferred_manifest = default_intersection_manifest_path(config, [source_modality, target_modality])
+        inferred_manifest = default_conversion_pool_manifest_path(config, [source_modality, target_modality])
+        if not inferred_manifest.exists():
+            inferred_manifest = default_intersection_manifest_path(config, [source_modality, target_modality])
         if inferred_manifest.exists():
             config.setdefault("data", {})["shared_manifest_path"] = str(inferred_manifest)
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"

@@ -39,3 +39,8 @@ training:
     eeg: 35
     meg: 60
     fmri: 60
+
+conversion:
+  split_seed: 42
+  val_concepts: 100
+  test_concepts: 200

@@ -10,7 +10,9 @@ sys.path.insert(0, str(ROOT))
 
 from src.data.image_manifest import (
     ensure_eeg_style_meg_split_lists,
+    ensure_shared_conversion_split_lists,
     build_intersection_map,
+    conversion_split_dir_from_config,
     build_things_image_map_records,
     dedupe_named_records,
     load_eeg_image_records,
@@ -50,13 +52,24 @@ def main(config_path):
     config = load_config(config_path)
     manifests_dir = manifests_dir_from_config(config)
     intersections_dir = manifests_dir / "intersections"
+    conversion_pools_dir = manifests_dir / "conversion_pools"
     meg_split_dir = split_manifests_dir_from_config(config, "meg", "fixed_image_holdout")
     manifests_dir.mkdir(parents=True, exist_ok=True)
     intersections_dir.mkdir(parents=True, exist_ok=True)
+    conversion_pools_dir.mkdir(parents=True, exist_ok=True)
     meg_split_dir.mkdir(parents=True, exist_ok=True)
 
     eeg_records = load_eeg_image_records(config["data"]["eeg_dir"])
+    eeg_train_records = load_eeg_image_records(
+        config["data"]["eeg_dir"],
+        include_train=True,
+        include_test=False,
+    )
     fmri_records = load_fmri_image_records(config["data"]["fmri_dir"])
+    fmri_train_records = load_fmri_image_records(
+        config["data"]["fmri_dir"],
+        trial_types={"train"},
+    )
     meg_numeric_records = load_meg_numeric_records(config["data"]["meg_dir"])
 
     write_manifest_tsv(manifests_dir / "eeg_all.tsv", eeg_records)
@@ -119,6 +132,27 @@ def main(config_path):
         out_path = intersections_dir / f"{name}.txt"
         write_image_id_list(out_path, image_ids)
         print(f"{name}: {len(image_ids)}")
+
+    conversion_named_sets = {
+        "eeg": {record["image_id"] for record in eeg_train_records},
+        "fmri": {record["image_id"] for record in fmri_train_records},
+        "meg": {record["image_id"] for record in meg_records},
+    }
+    conversion_pools = build_intersection_map(conversion_named_sets)
+    for name, image_ids in conversion_pools.items():
+        out_path = conversion_pools_dir / f"{name}.txt"
+        write_image_id_list(out_path, image_ids)
+        split_dir = conversion_split_dir_from_config(config, shared_manifest_path=out_path)
+        ensure_shared_conversion_split_lists(
+            split_dir,
+            image_ids,
+            seed=config.get("conversion", {}).get("split_seed", 42),
+            val_concept_count=config.get("conversion", {}).get("val_concepts", 100),
+            test_concept_count=config.get("conversion", {}).get("test_concepts", 200),
+            overwrite=True,
+        )
+        print(f"{name} conversion pool: {len(image_ids)}")
+        print(f"  shared conversion split manifests: {split_dir}")
 
     legacy_shared = intersections_dir / "fmri_meg.txt"
     if legacy_shared.exists():

@@ -19,6 +19,11 @@ This directory contains the user-facing entry points for data prep, training, an
     - `data/manifests/intersections/eeg_fmri.txt`
     - `data/manifests/intersections/fmri_meg.txt`
     - `data/manifests/intersections/eeg_fmri_meg.txt`
+    - `data/manifests/conversion_pools/eeg_meg.txt`
+    - `data/manifests/conversion_pools/eeg_fmri.txt`
+    - `data/manifests/conversion_pools/fmri_meg.txt`
+    - `data/manifests/conversion_pools/eeg_fmri_meg.txt`
+    - pairwise and 3-way split manifests under `data/manifests/splits/conversion/shared-*/`
 - `scripts/build_shared_images.py`
   - Compatibility wrapper around `scripts/build_image_manifests.py`.
   - Keeps the legacy `data/shared_images.txt` file in sync from `fmri_meg.txt` when that intersection exists.
@@ -61,13 +66,15 @@ Checkpoint naming:
   - Reports modality-to-image and image-to-modality Top-1, Top-5, and CLIP 2-way.
 - `scripts/evaluate_conversion.py`
   - Reports modality-to-modality conversion metrics on a shared manifest.
-  - Defaults to `data/manifests/intersections/<modalities>.txt` when present.
+  - Defaults to `data/manifests/conversion_pools/<modalities>.txt` when present, then falls back to `data/manifests/intersections/<modalities>.txt`.
 - `scripts/evaluate_conversion_matrix.py`
   - Evaluates all subject-pair conversions for two modalities while loading each subject only once.
   - Writes the same per-pair `results/conversion/*.txt` files as `scripts/evaluate_conversion.py`.
 - `scripts/evaluate_all.py`
   - One-shot post-training runner for retrieval, shared-only retrieval, conversion matrix evaluation, and summary generation.
-  - Defaults to the MEG/fMRI workflow and auto-discovers subjects from `*_best.pt` checkpoints.
+  - For shared evaluation, defaults to the matching `conversion_pools` manifest when one exists.
+  - Supports 2-modality shared suites and 3-modality shared suites on a single 3-way manifest.
+  - Auto-discovers subjects from `*_best.pt` checkpoints.
 - `scripts/evaluate_eeg_table.py`
   - EEG-only summary table generator.
 - `scripts/summarize_results.py`

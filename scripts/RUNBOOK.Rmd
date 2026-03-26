@@ -16,6 +16,12 @@ The project now uses:
 - modality manifests for each native image set
 - pairwise and 3-way intersection manifests for conversion
 
+Current shared conversion workflow note:
+
+- shared training/evaluation should now use `data/manifests/conversion_pools/*.txt`
+- shared checkpoints now live under `checkpoints/conversion/shared-*/<modality>/`
+- when this runbook and the top-level README disagree, prefer the top-level README
+
 # One-Time Setup
 
 From the repo root:

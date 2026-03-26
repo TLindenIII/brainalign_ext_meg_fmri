@@ -2,6 +2,7 @@ import argparse
 import os
 import re
 import sys
+from itertools import combinations
 from pathlib import Path
 
 
@@ -12,7 +13,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from summarize_results import main as summarize_results_main
 from src.checkpoints import discover_best_checkpoints
-from src.data.image_manifest import default_intersection_manifest_path
+from src.data.image_manifest import (
+    default_conversion_pool_manifest_path,
+    default_intersection_manifest_path,
+)
 from src.eval_utils import load_config
 from src.evaluate import main as evaluate_retrieval_main
 from src.evaluate_conversion_matrix import main as evaluate_conversion_matrix_main
@@ -114,6 +118,9 @@ def resolve_shared_manifest(config_path, modalities, explicit_manifest):
         return manifest_path
 
     config = load_config(config_path)
+    manifest_path = default_conversion_pool_manifest_path(config, list(modalities))
+    if manifest_path.exists():
+        return manifest_path
     manifest_path = default_intersection_manifest_path(config, list(modalities))
     if manifest_path.exists():
         return manifest_path
@@ -121,8 +128,8 @@ def resolve_shared_manifest(config_path, modalities, explicit_manifest):
 
 
 def run_shared_suite(config_path, modalities, split, shared_manifest):
-    if len(modalities) != 2:
-        print("Skipping shared retrieval/conversion: exactly two modalities are required.")
+    if len(modalities) < 2:
+        print("Skipping shared retrieval/conversion: at least two modalities are required.")
         return
 
     manifest_path = resolve_shared_manifest(config_path, modalities, shared_manifest)
@@ -134,28 +141,28 @@ def run_shared_suite(config_path, modalities, split, shared_manifest):
         )
         return
 
-    left_modality, right_modality = modalities
-    left_checkpoints = discover_best_checkpoints(
-        left_modality,
-        shared_only=True,
-        shared_manifest_path=str(manifest_path),
-    )
-    right_checkpoints = discover_best_checkpoints(
-        right_modality,
-        shared_only=True,
-        shared_manifest_path=str(manifest_path),
-    )
-
-    if not left_checkpoints or not right_checkpoints:
-        print(
-            "Skipping shared retrieval/conversion: shared-only checkpoints are missing for "
-            f"{left_modality.upper()} or {right_modality.upper()}."
-        )
-        return
-
     print(f"Using shared manifest: {manifest_path}")
 
-    for modality, checkpoints in ((left_modality, left_checkpoints), (right_modality, right_checkpoints)):
+    shared_checkpoints = {}
+    missing_modalities = []
+    for modality in modalities:
+        checkpoints = discover_best_checkpoints(
+            modality,
+            shared_only=True,
+            shared_manifest_path=str(manifest_path),
+        )
+        if not checkpoints:
+            missing_modalities.append(modality)
+            continue
+        shared_checkpoints[modality] = checkpoints
+
+    if missing_modalities:
+        print(
+            "Skipping shared retrieval/conversion for missing shared-only checkpoints: "
+            + ", ".join(modality.upper() for modality in missing_modalities)
+        )
+
+    for modality, checkpoints in shared_checkpoints.items():
         print(
             f"Running shared-only retrieval for {modality.upper()} "
             f"subjects {', '.join(f'{subject:02d}' for subject in checkpoints)}"
@@ -171,23 +178,33 @@ def run_shared_suite(config_path, modalities, split, shared_manifest):
                 str(manifest_path),
             )
 
-    print(
-        f"Running full conversion matrix for {left_modality.upper()}[{subject_spec(left_checkpoints)}] "
-        f"and {right_modality.upper()}[{subject_spec(right_checkpoints)}]"
-    )
-    evaluate_conversion_matrix_main(
-        config_path,
-        left_modality,
-        right_modality,
-        subject_spec(left_checkpoints),
-        subject_spec(right_checkpoints),
-        split,
-        shared_manifest_path=str(manifest_path),
-        source_ckpt_pattern=None,
-        target_ckpt_pattern=None,
-        source_shared_checkpoints=True,
-        target_shared_checkpoints=True,
-    )
+    for left_modality, right_modality in combinations(modalities, 2):
+        left_checkpoints = shared_checkpoints.get(left_modality)
+        right_checkpoints = shared_checkpoints.get(right_modality)
+        if not left_checkpoints or not right_checkpoints:
+            print(
+                f"Skipping conversion matrix for {left_modality.upper()} <-> {right_modality.upper()}: "
+                "shared-only checkpoints are missing."
+            )
+            continue
+
+        print(
+            f"Running full conversion matrix for {left_modality.upper()}[{subject_spec(left_checkpoints)}] "
+            f"and {right_modality.upper()}[{subject_spec(right_checkpoints)}]"
+        )
+        evaluate_conversion_matrix_main(
+            config_path,
+            left_modality,
+            right_modality,
+            subject_spec(left_checkpoints),
+            subject_spec(right_checkpoints),
+            split,
+            shared_manifest_path=str(manifest_path),
+            source_ckpt_pattern=None,
+            target_ckpt_pattern=None,
+            source_shared_checkpoints=True,
+            target_shared_checkpoints=True,
+        )
 
 
 def main():

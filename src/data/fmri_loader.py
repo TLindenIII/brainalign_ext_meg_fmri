@@ -5,7 +5,13 @@ from torch.utils.data import Dataset
 import h5py
 
 from src.data.csv_utils import read_text_table
-from src.data.image_manifest import load_named_image_ids, resolve_shared_manifest_path
+from src.data.image_manifest import (
+    ensure_shared_conversion_split_lists,
+    load_image_split_lists,
+    load_named_image_ids,
+    resolve_repo_path,
+    resolve_shared_manifest_path,
+)
 
 
 # Number of highest-variance voxels to retain.
@@ -36,6 +42,10 @@ class THINGSfMRIDataset(Dataset):
         transform=None,
         shared_only=False,
         shared_manifest_path=None,
+        shared_split_dir=None,
+        shared_split_seed=42,
+        shared_val_concept_count=100,
+        shared_test_concept_count=200,
         split_mode="official_repeats",
         quiet=False,
     ):
@@ -46,6 +56,10 @@ class THINGSfMRIDataset(Dataset):
         self.transform = transform
         self.subject = subject
         self.shared_only = shared_only
+        self.shared_split_dir = resolve_repo_path(shared_split_dir) if shared_split_dir else None
+        self.shared_split_seed = shared_split_seed
+        self.shared_val_concept_count = shared_val_concept_count
+        self.shared_test_concept_count = shared_test_concept_count
         self.quiet = quiet
         self._log = print if not self.quiet else (lambda *args, **kwargs: None)
         sub_str = f"sub-{subject:02d}"
@@ -190,6 +204,8 @@ class THINGSfMRIDataset(Dataset):
                 "Check shared-image settings and stimulus metadata."
             )
 
+        if self.shared_only and self.shared_split_dir:
+            return self._assign_shared_conversion_splits(all_trials)
         if self.split_mode == "official_repeats":
             return self._assign_official_repeat_splits(all_trials)
         if self.split_mode == "random_strict":
@@ -283,6 +299,44 @@ class THINGSfMRIDataset(Dataset):
             else:
                 trial["assigned_split"] = "test"
 
+        return np.array(
+            [trial["trial_idx"] for trial in all_trials if trial["assigned_split"] == "train"],
+            dtype=int,
+        )
+
+    def _assign_shared_conversion_splits(self, all_trials):
+        ensure_shared_conversion_split_lists(
+            self.shared_split_dir,
+            self.shared_images or {trial["image_id"] for trial in all_trials},
+            seed=self.shared_split_seed,
+            val_concept_count=self.shared_val_concept_count,
+            test_concept_count=self.shared_test_concept_count,
+            overwrite=False,
+        )
+        self.image_splits = load_image_split_lists(self.shared_split_dir)
+        excluded_path = self.shared_split_dir / "excluded.txt"
+        excluded_images = load_named_image_ids(excluded_path) if excluded_path.exists() else set()
+
+        filtered_trials = []
+        for trial in all_trials:
+            image_id = trial["image_id"]
+            if image_id in self.image_splits["train"]:
+                trial["assigned_split"] = "train"
+                filtered_trials.append(trial)
+            elif image_id in self.image_splits["val"]:
+                trial["assigned_split"] = "val"
+                filtered_trials.append(trial)
+            elif image_id in self.image_splits["test"]:
+                trial["assigned_split"] = "test"
+                filtered_trials.append(trial)
+            elif image_id in excluded_images:
+                continue
+
+        all_trials[:] = filtered_trials
+        if not all_trials:
+            raise ValueError("No fMRI trials matched the requested shared conversion split manifest")
+
+        self.effective_split_mode = "shared_conversion_manifest"
         return np.array(
             [trial["trial_idx"] for trial in all_trials if trial["assigned_split"] == "train"],
             dtype=int,

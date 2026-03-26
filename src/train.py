@@ -12,6 +12,7 @@ from src.models.fmri_model import fMRIAlignModel
 from src.models.meg_model import MEGAlignModel
 from src.models.loss import clip_loss
 from src.data.eeg_loader import THINGSEEG2Dataset
+from src.data.image_manifest import conversion_split_dir_from_config
 from src.data.meg_loader import THINGSMEGDataset
 from src.data.fmri_loader import THINGSfMRIDataset
 from src.checkpoints import checkpoint_paths_for, conversion_manifest_slug
@@ -44,6 +45,13 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
     manifests_dir = config["data"].get("manifests_dir", "data/manifests")
     meg_split_mode = config["data"].get("meg_split_mode", "fixed_image_holdout")
     fmri_split_mode = config["data"].get("fmri_split_mode", "official_repeats")
+    conversion_config = config.get("conversion", {})
+    shared_split_dir = None
+    if shared_only and shared_manifest_path:
+        shared_split_dir = conversion_split_dir_from_config(
+            config,
+            shared_manifest_path=shared_manifest_path,
+        )
     
     if modality == "eeg":
         dataset = THINGSEEG2Dataset(
@@ -53,6 +61,10 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             subject=subject,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            shared_split_dir=shared_split_dir,
+            shared_split_seed=conversion_config.get("split_seed", 42),
+            shared_val_concept_count=conversion_config.get("val_concepts", 100),
+            shared_test_concept_count=conversion_config.get("test_concepts", 200),
         )
     elif modality == "meg":
         dataset = THINGSMEGDataset(
@@ -62,6 +74,10 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             subject=subject,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            shared_split_dir=shared_split_dir,
+            shared_split_seed=conversion_config.get("split_seed", 42),
+            shared_val_concept_count=conversion_config.get("val_concepts", 100),
+            shared_test_concept_count=conversion_config.get("test_concepts", 200),
             things_image_map_path=things_image_map_path,
             split_mode=meg_split_mode,
             split_manifest_dir=os.path.join(manifests_dir, "splits", "meg", meg_split_mode),
@@ -74,6 +90,10 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
             subject=subject,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            shared_split_dir=shared_split_dir,
+            shared_split_seed=conversion_config.get("split_seed", 42),
+            shared_val_concept_count=conversion_config.get("val_concepts", 100),
+            shared_test_concept_count=conversion_config.get("test_concepts", 200),
             split_mode=fmri_split_mode,
         )
     else:
@@ -85,13 +105,25 @@ def get_dataloader(config, modality, split, subject=1, shared_only=False):
 
 def get_meg_train_val_dataloaders(config, subject=1, shared_only=False):
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
+    shared_manifest_path = config["data"].get("shared_manifest_path")
+    conversion_config = config.get("conversion", {})
+    shared_split_dir = None
+    if shared_only and shared_manifest_path:
+        shared_split_dir = conversion_split_dir_from_config(
+            config,
+            shared_manifest_path=shared_manifest_path,
+        )
     full_dataset = THINGSMEGDataset(
         meg_dir=config["data"]["meg_dir"],
         clip_cache_path=clip_cache_path,
         split="all",
         subject=subject,
         shared_only=shared_only,
-        shared_manifest_path=config["data"].get("shared_manifest_path"),
+        shared_manifest_path=shared_manifest_path,
+        shared_split_dir=shared_split_dir,
+        shared_split_seed=conversion_config.get("split_seed", 42),
+        shared_val_concept_count=conversion_config.get("val_concepts", 100),
+        shared_test_concept_count=conversion_config.get("test_concepts", 200),
         things_image_map_path=config["data"].get("things_image_map_path"),
         split_mode=config["data"].get("meg_split_mode", "fixed_image_holdout"),
         split_manifest_dir=os.path.join(
@@ -119,13 +151,25 @@ def get_meg_train_val_dataloaders(config, subject=1, shared_only=False):
 
 def get_fmri_train_val_dataloaders(config, subject=1, shared_only=False):
     clip_cache_path = os.path.join(config["data"]["clip_cache_dir"], "ViT-B-32.npz")
+    shared_manifest_path = config["data"].get("shared_manifest_path")
+    conversion_config = config.get("conversion", {})
+    shared_split_dir = None
+    if shared_only and shared_manifest_path:
+        shared_split_dir = conversion_split_dir_from_config(
+            config,
+            shared_manifest_path=shared_manifest_path,
+        )
     full_dataset = THINGSfMRIDataset(
         fmri_dir=config["data"]["fmri_dir"],
         clip_cache_path=clip_cache_path,
         split="all",
         subject=subject,
         shared_only=shared_only,
-        shared_manifest_path=config["data"].get("shared_manifest_path"),
+        shared_manifest_path=shared_manifest_path,
+        shared_split_dir=shared_split_dir,
+        shared_split_seed=conversion_config.get("split_seed", 42),
+        shared_val_concept_count=conversion_config.get("val_concepts", 100),
+        shared_test_concept_count=conversion_config.get("test_concepts", 200),
         split_mode=config["data"].get("fmri_split_mode", "official_repeats"),
     )
 

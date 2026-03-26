@@ -4,7 +4,10 @@ from pathlib import Path
 import torch
 
 from src.checkpoints import resolve_existing_checkpoint_path
-from src.data.image_manifest import default_intersection_manifest_path
+from src.data.image_manifest import (
+    default_conversion_pool_manifest_path,
+    default_intersection_manifest_path,
+)
 from src.eval_utils import (
     align_embedding_dicts,
     collect_modality_embeddings,
@@ -123,7 +126,9 @@ def main(
     if shared_manifest_path:
         config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
     else:
-        inferred_manifest = default_intersection_manifest_path(config, [source_modality, target_modality])
+        inferred_manifest = default_conversion_pool_manifest_path(config, [source_modality, target_modality])
+        if not inferred_manifest.exists():
+            inferred_manifest = default_intersection_manifest_path(config, [source_modality, target_modality])
         if inferred_manifest.exists():
             config.setdefault("data", {})["shared_manifest_path"] = str(inferred_manifest)
     resolved_shared_manifest_path = config.get("data", {}).get("shared_manifest_path")

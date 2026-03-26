@@ -8,6 +8,7 @@ import yaml
 
 from src.data.eeg_loader import THINGSEEG2Dataset
 from src.data.fmri_loader import THINGSfMRIDataset
+from src.data.image_manifest import conversion_split_dir_from_config
 from src.data.meg_loader import THINGSMEGDataset
 from src.models.contrastive_model import BrainAlignModel
 from src.models.fmri_model import fMRIAlignModel
@@ -34,6 +35,13 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
     manifests_dir = config["data"].get("manifests_dir", "data/manifests")
     meg_split_mode = config["data"].get("meg_split_mode", "fixed_image_holdout")
     fmri_split_mode = config["data"].get("fmri_split_mode", "official_repeats")
+    conversion_config = config.get("conversion", {})
+    shared_split_dir = None
+    if shared_only and shared_manifest_path:
+        shared_split_dir = conversion_split_dir_from_config(
+            config,
+            shared_manifest_path=shared_manifest_path,
+        )
 
     if modality == "eeg":
         return THINGSEEG2Dataset(
@@ -44,6 +52,10 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             quiet=quiet,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            shared_split_dir=shared_split_dir,
+            shared_split_seed=conversion_config.get("split_seed", 42),
+            shared_val_concept_count=conversion_config.get("val_concepts", 100),
+            shared_test_concept_count=conversion_config.get("test_concepts", 200),
         )
     if modality == "meg":
         return THINGSMEGDataset(
@@ -53,6 +65,10 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             subject=subject,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            shared_split_dir=shared_split_dir,
+            shared_split_seed=conversion_config.get("split_seed", 42),
+            shared_val_concept_count=conversion_config.get("val_concepts", 100),
+            shared_test_concept_count=conversion_config.get("test_concepts", 200),
             things_image_map_path=things_image_map_path,
             split_mode=meg_split_mode,
             split_manifest_dir=os.path.join(manifests_dir, "splits", "meg", meg_split_mode),
@@ -66,6 +82,10 @@ def create_dataset(config, modality, split, subject=1, shared_only=False, quiet=
             subject=subject,
             shared_only=shared_only,
             shared_manifest_path=shared_manifest_path,
+            shared_split_dir=shared_split_dir,
+            shared_split_seed=conversion_config.get("split_seed", 42),
+            shared_val_concept_count=conversion_config.get("val_concepts", 100),
+            shared_test_concept_count=conversion_config.get("test_concepts", 200),
             split_mode=fmri_split_mode,
             quiet=quiet,
         )
