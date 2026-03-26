@@ -28,10 +28,11 @@ This directory contains the user-facing entry points for data prep, training, an
 
 ### Training scripts
 
+- `scripts/train_all_subjects.py`
 - `scripts/train_all_subjects.sh`
 - `scripts/train_all_subjects.ps1`
 
-These discover the locally available subjects for a modality and launch `src/train.py` sequentially.
+`scripts/train_all_subjects.py` is the primary multi-subject trainer. The shell and PowerShell scripts are thin wrappers around it.
 
 Key behavior:
 
@@ -42,10 +43,17 @@ Key behavior:
 
 Checkpoint naming:
 
-- EEG: `checkpoints/eeg/eeg_brainalign_sub01_best.pt`
-- fMRI: `checkpoints/fmri/fmri_brainalign_sub01_best.pt`
-- MEG: `checkpoints/meg/meg_brainalign_sub01_temporalcnn_best.pt`
-- Shared-only runs add `_shared` before `_best.pt` / `_latest.pt`
+- Full-data retrieval:
+  - EEG: `checkpoints/eeg/eeg_brainalign_sub01_best.pt`
+  - fMRI: `checkpoints/fmri/fmri_brainalign_sub01_best.pt`
+  - MEG: `checkpoints/meg/meg_brainalign_sub01_temporalcnn_best.pt`
+- Pair-specific shared conversion:
+  - EEG<->MEG EEG: `checkpoints/conversion/shared-eeg-meg/eeg/eeg_brainalign_sub01_best.pt`
+  - EEG<->MEG MEG: `checkpoints/conversion/shared-eeg-meg/meg/meg_brainalign_sub01_temporalcnn_best.pt`
+  - EEG<->fMRI EEG: `checkpoints/conversion/shared-eeg-fmri/eeg/eeg_brainalign_sub01_best.pt`
+  - EEG<->fMRI fMRI: `checkpoints/conversion/shared-eeg-fmri/fmri/fmri_brainalign_sub01_best.pt`
+  - MEG<->fMRI MEG: `checkpoints/conversion/shared-meg-fmri/meg/meg_brainalign_sub01_temporalcnn_best.pt`
+  - MEG<->fMRI fMRI: `checkpoints/conversion/shared-meg-fmri/fmri/fmri_brainalign_sub01_best.pt`
 
 ### Evaluation scripts
 

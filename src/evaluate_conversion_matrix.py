@@ -3,6 +3,7 @@ from pathlib import Path
 
 import torch
 
+from src.checkpoints import resolve_existing_checkpoint_path
 from src.data.image_manifest import default_intersection_manifest_path
 from src.eval_utils import (
     align_embedding_dicts,
@@ -37,28 +38,25 @@ def parse_subject_spec(spec):
     return sorted(subjects)
 
 
-def default_checkpoint_path(modality, subject, shared_only=False):
-    stem = f"{modality}_brainalign_sub{subject:02d}"
-    shared_suffix = "_shared" if shared_only else ""
-    base_dir = Path("checkpoints") / modality
-
-    if modality == "meg":
-        candidates = [
-            base_dir / f"{stem}_temporalcnn{shared_suffix}_best.pt",
-            base_dir / f"{stem}_attnpool{shared_suffix}_best.pt",
-        ]
-        for candidate in candidates:
-            if candidate.exists():
-                return candidate
-        return candidates[0]
-
-    return base_dir / f"{stem}{shared_suffix}_best.pt"
+def default_checkpoint_path(modality, subject, shared_only=False, shared_manifest_path=None):
+    return resolve_existing_checkpoint_path(
+        modality,
+        subject,
+        kind="best",
+        shared_only=shared_only,
+        shared_manifest_path=shared_manifest_path,
+    )
 
 
-def resolve_checkpoint_path(modality, subject, pattern=None, shared_only=False):
+def resolve_checkpoint_path(modality, subject, pattern=None, shared_only=False, shared_manifest_path=None):
     if pattern:
         return Path(pattern.format(subject=subject, subject02=f"{subject:02d}"))
-    return default_checkpoint_path(modality, subject, shared_only=shared_only)
+    return default_checkpoint_path(
+        modality,
+        subject,
+        shared_only=shared_only,
+        shared_manifest_path=shared_manifest_path,
+    )
 
 
 def collect_subject_embeddings(
@@ -78,6 +76,7 @@ def collect_subject_embeddings(
             subject,
             pattern=checkpoint_pattern,
             shared_only=shared_checkpoints,
+            shared_manifest_path=shared_manifest_path,
         )
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
@@ -127,6 +126,7 @@ def main(
         inferred_manifest = default_intersection_manifest_path(config, [source_modality, target_modality])
         if inferred_manifest.exists():
             config.setdefault("data", {})["shared_manifest_path"] = str(inferred_manifest)
+    resolved_shared_manifest_path = config.get("data", {}).get("shared_manifest_path")
 
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     source_subjects = parse_subject_spec(source_subjects_spec)
@@ -139,8 +139,8 @@ def main(
     )
     print("Shared-only images: True")
     print(f"Split: {split}")
-    if config.get("data", {}).get("shared_manifest_path"):
-        print(f"Shared manifest: {config['data']['shared_manifest_path']}")
+    if resolved_shared_manifest_path:
+        print(f"Shared manifest: {resolved_shared_manifest_path}")
 
     source_cache = collect_subject_embeddings(
         config,
@@ -148,7 +148,7 @@ def main(
         source_subjects,
         source_ckpt_pattern,
         split,
-        shared_manifest_path,
+        resolved_shared_manifest_path,
         source_shared_checkpoints,
         device,
     )
@@ -158,7 +158,7 @@ def main(
         target_subjects,
         target_ckpt_pattern,
         split,
-        shared_manifest_path,
+        resolved_shared_manifest_path,
         target_shared_checkpoints,
         device,
     )

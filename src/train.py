@@ -14,16 +14,8 @@ from src.models.loss import clip_loss
 from src.data.eeg_loader import THINGSEEG2Dataset
 from src.data.meg_loader import THINGSMEGDataset
 from src.data.fmri_loader import THINGSfMRIDataset
+from src.checkpoints import checkpoint_paths_for, conversion_manifest_slug
 from src.evaluate import evaluate
-
-
-def checkpoint_stem_for(modality, subject, shared_only=False):
-    stem = f"{modality}_brainalign_sub{subject:02d}"
-    if modality == "meg":
-        stem += "_temporalcnn"
-    if shared_only:
-        stem += "_shared"
-    return stem
 
 def load_config(config_path="config.yaml"):
     with open(config_path, "r") as f:
@@ -155,8 +147,14 @@ def train(
     config = load_config(config_path)
     if shared_manifest_path:
         config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
+    if shared_only and not config.get("data", {}).get("shared_manifest_path"):
+        raise ValueError("Shared conversion training requires an explicit --shared-manifest")
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
-    scope_label = "shared" if shared_only else "full"
+    scope_label = (
+        f"shared:{conversion_manifest_slug(shared_manifest_path=config['data']['shared_manifest_path'])}"
+        if shared_only
+        else "full"
+    )
     print(f"Using device: {device} for modality {modality.upper()}, subject {subject:02d} ({scope_label})")
     
     # Setup data
@@ -240,11 +238,17 @@ def train(
     
     epochs = config["training"]["epochs"][modality] if epochs_override is None else epochs_override
     best_val_metric = 0.0
-    save_dir = Path("checkpoints") / modality
+    checkpoint_paths = checkpoint_paths_for(
+        modality,
+        subject,
+        shared_only=shared_only,
+        shared_manifest_path=config["data"].get("shared_manifest_path"),
+    )
+    save_dir = checkpoint_paths["save_dir"]
     save_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_stem = checkpoint_stem_for(modality, subject, shared_only=shared_only)
-    best_ckpt_path = save_dir / f"{checkpoint_stem}_best.pt"
-    latest_ckpt_path = save_dir / f"{checkpoint_stem}_latest.pt"
+    best_ckpt_path = checkpoint_paths["best"]
+    latest_ckpt_path = checkpoint_paths["latest"]
+    print(f"Checkpoint directory: {save_dir}")
     
     start_epoch = 0
     if resume or resume_best:

@@ -2,7 +2,6 @@ import argparse
 import os
 import re
 import sys
-from itertools import combinations
 from pathlib import Path
 
 
@@ -12,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from summarize_results import main as summarize_results_main
+from src.checkpoints import discover_best_checkpoints
 from src.data.image_manifest import default_intersection_manifest_path
 from src.eval_utils import load_config
 from src.evaluate import main as evaluate_retrieval_main
@@ -19,11 +19,6 @@ from src.evaluate_conversion_matrix import main as evaluate_conversion_matrix_ma
 
 
 VALID_MODALITIES = ("eeg", "meg", "fmri")
-MEG_ARCH_PRIORITY = {
-    "_temporalcnn": 0,
-    "_attnpool": 1,
-    "": 2,
-}
 
 
 def parse_modalities(value):
@@ -42,41 +37,6 @@ def parse_modalities(value):
     if not modalities:
         raise ValueError("No modalities provided")
     return modalities
-
-
-def checkpoint_pattern_for(modality):
-    return re.compile(
-        rf"^{modality}_brainalign_sub(?P<subject>\d+)"
-        rf"(?P<arch>_temporalcnn|_attnpool)?"
-        rf"(?P<shared>_shared)?_best\.pt$"
-    )
-
-
-def discover_checkpoints(modality, shared_only=False):
-    checkpoint_dir = ROOT / "checkpoints" / modality
-    pattern = checkpoint_pattern_for(modality)
-    selected = {}
-
-    if not checkpoint_dir.exists():
-        return selected
-
-    for path in checkpoint_dir.glob(f"{modality}_brainalign_sub*_best.pt"):
-        match = pattern.match(path.name)
-        if not match:
-            continue
-
-        is_shared = match.group("shared") is not None
-        if is_shared != shared_only:
-            continue
-
-        subject = int(match.group("subject"))
-        arch = match.group("arch") or ""
-        priority = MEG_ARCH_PRIORITY.get(arch, 99) if modality == "meg" else 0
-        current = selected.get(subject)
-        if current is None or priority < current[0]:
-            selected[subject] = (priority, path)
-
-    return {subject: record[1] for subject, record in sorted(selected.items())}
 
 
 def subject_spec(subjects):
@@ -123,7 +83,7 @@ def clean_results(modalities, split, remove_summary):
 
 def run_full_retrieval(config_path, modalities, split):
     for modality in modalities:
-        checkpoints = discover_checkpoints(modality, shared_only=False)
+        checkpoints = discover_best_checkpoints(modality, shared_only=False)
         if not checkpoints:
             print(f"Skipping full retrieval for {modality.upper()}: no full best checkpoints found.")
             continue
@@ -175,8 +135,16 @@ def run_shared_suite(config_path, modalities, split, shared_manifest):
         return
 
     left_modality, right_modality = modalities
-    left_checkpoints = discover_checkpoints(left_modality, shared_only=True)
-    right_checkpoints = discover_checkpoints(right_modality, shared_only=True)
+    left_checkpoints = discover_best_checkpoints(
+        left_modality,
+        shared_only=True,
+        shared_manifest_path=str(manifest_path),
+    )
+    right_checkpoints = discover_best_checkpoints(
+        right_modality,
+        shared_only=True,
+        shared_manifest_path=str(manifest_path),
+    )
 
     if not left_checkpoints or not right_checkpoints:
         print(
