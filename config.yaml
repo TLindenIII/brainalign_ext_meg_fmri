@@ -31,12 +31,12 @@ training:
     meg: 32
     fmri: 256
   selection_metric:
-    eeg: top1
+    eeg: mrr #top1 for BrainAlign retrieval (reproduction), mrr for conversion training
     meg: mrr
     fmri: mrr
   learning_rate: 3e-4
   epochs:
-    eeg: 35
+    eeg: 60
     meg: 60
     fmri: 60
 
