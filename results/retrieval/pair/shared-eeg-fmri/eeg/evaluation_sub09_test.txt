@@ -1,0 +1,17 @@
+--- Evaluation Results (EEG / subject 09) ---
+Checkpoint: checkpoints\conversion\shared-eeg-fmri\eeg\eeg_brainalign_sub09_best.pt
+Split: test
+Evaluation scope: pair
+Shared group: shared-eeg-fmri
+Shared-only images: True
+Candidate images: 200
+
+Modality -> Image
+Top-1 Retrieval: 1.50%
+Top-5 Retrieval: 5.50%
+CLIP 2-Way:      64.56%
+
+Image -> Modality
+Top-1 Retrieval: 0.50%
+Top-5 Retrieval: 6.00%
+CLIP 2-Way:      63.64%

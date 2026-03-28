@@ -1,0 +1,17 @@
+--- Evaluation Results (EEG / subject 06) ---
+Checkpoint: checkpoints\conversion\shared-eeg-meg\eeg\eeg_brainalign_sub06_best.pt
+Split: test
+Evaluation scope: pair
+Shared group: shared-eeg-meg
+Shared-only images: True
+Candidate images: 200
+
+Modality -> Image
+Top-1 Retrieval: 12.00%
+Top-5 Retrieval: 29.50%
+CLIP 2-Way:      86.84%
+
+Image -> Modality
+Top-1 Retrieval: 11.50%
+Top-5 Retrieval: 31.50%
+CLIP 2-Way:      88.47%

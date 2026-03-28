@@ -1,0 +1,17 @@
+--- Evaluation Results (FMRI / subject 01) ---
+Checkpoint: checkpoints\conversion\shared-fmri-meg\fmri\fmri_brainalign_sub01_best.pt
+Split: test
+Evaluation scope: pair
+Shared group: shared-fmri-meg
+Shared-only images: True
+Candidate images: 200
+
+Modality -> Image
+Top-1 Retrieval: 4.00%
+Top-5 Retrieval: 13.00%
+CLIP 2-Way:      78.41%
+
+Image -> Modality
+Top-1 Retrieval: 2.50%
+Top-5 Retrieval: 13.50%
+CLIP 2-Way:      79.18%
