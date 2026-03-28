@@ -1,0 +1,15 @@
+--- Evaluation Results (MEG / subject 01) ---
+Checkpoint: checkpoints\conversion\shared-eeg-fmri-meg\meg\meg_brainalign_sub01_temporalcnn_best.pt
+Split: test
+Shared-only images: True
+Candidate images: 200
+
+Modality -> Image
+Top-1 Retrieval: 0.50%
+Top-5 Retrieval: 7.00%
+CLIP 2-Way:      59.68%
+
+Image -> Modality
+Top-1 Retrieval: 3.50%
+Top-5 Retrieval: 6.50%
+CLIP 2-Way:      60.63%

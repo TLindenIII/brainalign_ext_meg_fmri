@@ -1,0 +1,15 @@
+--- Evaluation Results (EEG / subject 02) ---
+Checkpoint: checkpoints\conversion\shared-eeg-fmri-meg\eeg\eeg_brainalign_sub02_best.pt
+Split: test
+Shared-only images: True
+Candidate images: 200
+
+Modality -> Image
+Top-1 Retrieval: 1.00%
+Top-5 Retrieval: 1.00%
+CLIP 2-Way:      47.44%
+
+Image -> Modality
+Top-1 Retrieval: 0.50%
+Top-5 Retrieval: 1.50%
+CLIP 2-Way:      47.20%

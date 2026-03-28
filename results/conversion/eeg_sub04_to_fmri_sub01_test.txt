@@ -1,16 +1,16 @@
 --- Conversion Results (EEG sub-04 <-> FMRI sub-01) ---
-Source checkpoint: checkpoints\conversion\shared-eeg-fmri\eeg\eeg_brainalign_sub04_best.pt
-Target checkpoint: checkpoints\conversion\shared-eeg-fmri\fmri\fmri_brainalign_sub01_best.pt
+Source checkpoint: checkpoints\conversion\shared-eeg-fmri-meg\eeg\eeg_brainalign_sub04_best.pt
+Target checkpoint: checkpoints\conversion\shared-eeg-fmri-meg\fmri\fmri_brainalign_sub01_best.pt
 Split: test
 Shared-only images: True
 Aligned shared test images: 200
 
 eeg_to_fmri
-Top-1 Retrieval: 5.00%
+Top-1 Retrieval: 2.00%
 Top-5 Retrieval: 7.00%
-CLIP 2-Way:      64.41%
+CLIP 2-Way:      58.03%
 
 fmri_to_eeg
-Top-1 Retrieval: 2.00%
-Top-5 Retrieval: 9.50%
-CLIP 2-Way:      65.25%
+Top-1 Retrieval: 1.50%
+Top-5 Retrieval: 7.00%
+CLIP 2-Way:      57.74%
