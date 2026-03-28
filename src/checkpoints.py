@@ -30,6 +30,57 @@ def conversion_directory_name(shared_manifest_path=None, modalities=None):
     return f"shared-{slug.replace('_', '-')}"
 
 
+def evaluation_scope_for(shared_manifest_path=None, modalities=None):
+    slug = conversion_manifest_slug(
+        shared_manifest_path=shared_manifest_path,
+        modalities=modalities,
+    )
+    modality_count = len([token for token in slug.split("_") if token])
+    if modality_count >= 3:
+        return "three_way"
+    if modality_count == 2:
+        return "pair"
+    return "shared"
+
+
+def retrieval_results_dir(modality, evaluation_scope, shared_group="none"):
+    results_dir = Path("results") / "retrieval" / evaluation_scope
+    if shared_group and shared_group != "none" and evaluation_scope != "full":
+        results_dir = results_dir / shared_group
+    return results_dir / modality
+
+
+def retrieval_results_path(modality, subject, split, evaluation_scope, shared_group="none"):
+    results_dir = retrieval_results_dir(modality, evaluation_scope, shared_group)
+    return results_dir / f"evaluation_sub{subject:02d}_{split}.txt"
+
+
+def conversion_results_dir(evaluation_scope, shared_group="none"):
+    results_dir = Path("results") / "conversion" / evaluation_scope
+    if shared_group and shared_group != "none":
+        results_dir = results_dir / shared_group
+    return results_dir
+
+
+def conversion_results_path(
+    source_modality,
+    source_subject,
+    target_modality,
+    target_subject,
+    split,
+    evaluation_scope,
+    shared_group="none",
+):
+    results_dir = conversion_results_dir(evaluation_scope, shared_group)
+    return (
+        results_dir
+        / (
+            f"{source_modality}_sub{source_subject:02d}_to_"
+            f"{target_modality}_sub{target_subject:02d}_{split}.txt"
+        )
+    )
+
+
 def checkpoint_stem_for(modality, subject, arch_variant="current"):
     stem = f"{modality}_brainalign_sub{subject:02d}"
     if modality == "meg":

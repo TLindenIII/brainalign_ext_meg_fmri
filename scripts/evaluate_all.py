@@ -49,6 +49,13 @@ def subject_spec(subjects):
 
 def clean_results(modalities, split, remove_summary):
     removed = []
+    retrieval_root = ROOT / "results" / "retrieval"
+    if retrieval_root.exists():
+        for path in retrieval_root.rglob(f"evaluation_sub*_{split}.txt"):
+            if any(modality in path.parts for modality in modalities):
+                path.unlink()
+                removed.append(path)
+
     for modality in modalities:
         modality_dir = ROOT / "results" / modality
         if not modality_dir.exists():
@@ -56,16 +63,22 @@ def clean_results(modalities, split, remove_summary):
         for path in modality_dir.glob(f"evaluation_sub*_{split}_*.txt"):
             path.unlink()
             removed.append(path)
+        for path in modality_dir.glob(f"evaluation_sub*_{split}.txt"):
+            path.unlink()
+            removed.append(path)
 
     conversion_dir = ROOT / "results" / "conversion"
     if conversion_dir.exists():
         conversion_pattern = re.compile(
-            r"^(?P<source>[a-z]+)_sub\d+_to_(?P<target>[a-z]+)_sub\d+_(?P<split>\w+)\.txt$"
+            r"^(?P<source>[a-z]+)_sub\d+_to_(?P<target>[a-z]+)_sub\d+_"
+            r"(?P<split>\w+)(?:_(?P<scope>[^.]+))?\.txt$"
         )
         selected_modalities = set(modalities)
-        for path in conversion_dir.glob(f"*_{split}.txt"):
+        for path in conversion_dir.rglob("*.txt"):
             match = conversion_pattern.match(path.name)
             if not match:
+                continue
+            if match.group("split") != split:
                 continue
             if (
                 match.group("source") in selected_modalities

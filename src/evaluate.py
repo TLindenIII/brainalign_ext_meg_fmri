@@ -4,6 +4,11 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from src.checkpoints import (
+    conversion_directory_name,
+    evaluation_scope_for,
+    retrieval_results_path,
+)
 from src.eval_utils import (
     build_model,
     clip_embeddings_for_ids,
@@ -34,6 +39,7 @@ def main(config_path, modality, checkpoint_path, subject, split, shared_only, sh
     config = load_config(config_path)
     if shared_manifest_path:
         config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
+    resolved_shared_manifest_path = config.get("data", {}).get("shared_manifest_path")
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(f"Using device: {device} to evaluate {modality.upper()} subject {subject:02d}")
 
@@ -56,11 +62,23 @@ def main(config_path, modality, checkpoint_path, subject, split, shared_only, sh
 
     print("Beginning retrieval evaluation...")
     metrics = evaluate(model, test_loader, clip_dict, device)
+    evaluation_scope = (
+        evaluation_scope_for(shared_manifest_path=resolved_shared_manifest_path)
+        if shared_only and resolved_shared_manifest_path
+        else "full"
+    )
+    shared_group = (
+        conversion_directory_name(shared_manifest_path=resolved_shared_manifest_path)
+        if shared_only and resolved_shared_manifest_path
+        else "none"
+    )
 
     lines = [
         f"--- Evaluation Results ({modality.upper()} / subject {subject:02d}) ---",
         f"Checkpoint: {checkpoint_path}",
         f"Split: {split}",
+        f"Evaluation scope: {evaluation_scope}",
+        f"Shared group: {shared_group}",
         f"Shared-only images: {shared_only}",
         f"Candidate images: {metrics['candidate_count']}",
         "",
@@ -77,10 +95,14 @@ def main(config_path, modality, checkpoint_path, subject, split, shared_only, sh
 
     print("\n".join(lines))
 
-    results_dir = Path("results") / modality
-    results_dir.mkdir(parents=True, exist_ok=True)
-    scope = "shared" if shared_only else "full"
-    out_path = results_dir / f"evaluation_sub{subject:02d}_{split}_{scope}.txt"
+    out_path = retrieval_results_path(
+        modality,
+        subject,
+        split,
+        evaluation_scope,
+        shared_group,
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as handle:
         handle.write("\n".join(lines))
     print(f"Saved results to {out_path}")

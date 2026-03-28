@@ -15,6 +15,8 @@ RETRIEVAL_PATTERN = re.compile(
     r"--- Evaluation Results \((?P<modality>[A-Z]+) / subject (?P<subject>\d+)\) ---\s+"
     r"Checkpoint: (?P<checkpoint>.+)\s+"
     r"Split: (?P<split>\w+)\s+"
+    r"(?:Evaluation scope: (?P<evaluation_scope>[a-z_]+)\s+)?"
+    r"(?:Shared group: (?P<shared_group>[a-z0-9-]+)\s+)?"
     r"Shared-only images: (?P<shared_only>True|False)\s+"
     r"Candidate images: (?P<candidate_count>\d+)\s+"
     r"Modality -> Image\s+"
@@ -35,6 +37,8 @@ CONVERSION_PATTERN = re.compile(
     r"Source checkpoint: (?P<source_checkpoint>.+)\s+"
     r"Target checkpoint: (?P<target_checkpoint>.+)\s+"
     r"Split: (?P<split>\w+)\s+"
+    r"(?:Evaluation scope: (?P<evaluation_scope>[a-z_]+)\s+)?"
+    r"(?:Shared group: (?P<shared_group>[a-z0-9-]+)\s+)?"
     r"Shared-only images: (?P<shared_only>True|False)\s+"
     r"Aligned shared test images: (?P<candidate_count>\d+)\s+"
     r"(?P<forward_label>[a-z_]+)\s+"
@@ -63,6 +67,30 @@ def parse_bool(value):
     return str(value).strip().lower() == "true"
 
 
+def infer_shared_group(*paths):
+    pattern = re.compile(r"checkpoints[/\\]conversion[/\\](?P<group>shared-[^/\\]+)")
+    for path in paths:
+        if not path:
+            continue
+        match = pattern.search(str(path))
+        if match:
+            return match.group("group")
+    return "none"
+
+
+def infer_evaluation_scope(shared_only, shared_group):
+    if not shared_only:
+        return "full"
+    if not shared_group or shared_group == "none":
+        return "shared"
+    modality_count = len([token for token in shared_group.replace("shared-", "").split("-") if token])
+    if modality_count >= 3:
+        return "three_way"
+    if modality_count == 2:
+        return "pair"
+    return "shared"
+
+
 def parse_float_fields(record, keys):
     for key in keys:
         record[key] = float(record[key])
@@ -85,6 +113,11 @@ def parse_retrieval_file(path):
     record["modality"] = record["modality"].lower()
     record["subject"] = int(record["subject"])
     record["shared_only"] = parse_bool(record["shared_only"])
+    record["shared_group"] = record.get("shared_group") or infer_shared_group(record["checkpoint"])
+    record["evaluation_scope"] = record.get("evaluation_scope") or infer_evaluation_scope(
+        record["shared_only"],
+        record["shared_group"],
+    )
     parse_int_fields(record, ["candidate_count"])
     parse_float_fields(
         record,
@@ -105,6 +138,14 @@ def parse_conversion_file(path):
     record["source_subject"] = int(record["source_subject"])
     record["target_subject"] = int(record["target_subject"])
     record["shared_only"] = parse_bool(record["shared_only"])
+    record["shared_group"] = record.get("shared_group") or infer_shared_group(
+        record["source_checkpoint"],
+        record["target_checkpoint"],
+    )
+    record["evaluation_scope"] = record.get("evaluation_scope") or infer_evaluation_scope(
+        record["shared_only"],
+        record["shared_group"],
+    )
     parse_int_fields(record, ["candidate_count"])
     parse_float_fields(
         record,
@@ -124,6 +165,8 @@ def parse_eeg_summary_file(path):
             "modality": "eeg",
             "subject": subject,
             "split": "test_200way",
+            "evaluation_scope": "full",
+            "shared_group": "none",
             "shared_only": False,
             "candidate_count": candidate_count,
             "checkpoint": "summary_only",
@@ -302,32 +345,32 @@ def build_report(retrieval_rows, retrieval_summary_rows, conversion_rows, conver
             "",
             markdown_table(
                 retrieval_rows,
-                ["Modality", "Subject", "Split", "Shared", "Candidates", "M->I Top-1", "M->I Top-5", "M->I 2-way", "I->M Top-1", "I->M Top-5", "I->M 2-way"],
-                ["modality", "subject", "split", "shared_only", "candidate_count", "m2i_top1", "m2i_top5", "m2i_two_way", "i2m_top1", "i2m_top5", "i2m_two_way"],
+                ["Modality", "Subject", "Split", "Scope", "Group", "Shared", "Candidates", "M->I Top-1", "M->I Top-5", "M->I 2-way", "I->M Top-1", "I->M Top-5", "I->M 2-way"],
+                ["modality", "subject", "split", "evaluation_scope", "shared_group", "shared_only", "candidate_count", "m2i_top1", "m2i_top5", "m2i_two_way", "i2m_top1", "i2m_top5", "i2m_two_way"],
             ),
             "",
             "## Retrieval Summary",
             "",
             markdown_table(
                 retrieval_summary_rows,
-                ["Modality", "Split", "Shared", "N", "M->I Top-1", "M->I Top-5", "M->I 2-way", "Base Top-1", "Base Top-5", "Retrieval Size", "Classes"],
-                ["modality", "split", "shared_only", "count", "m2i_top1_mean", "m2i_top5_mean", "m2i_two_way_mean", "baseline_top1_pct_mean", "baseline_top5_pct_mean", "retrieval_dataset_size_mean", "number_of_classes_mean"],
+                ["Modality", "Split", "Scope", "Group", "Shared", "N", "M->I Top-1", "M->I Top-5", "M->I 2-way", "Base Top-1", "Base Top-5", "Retrieval Size", "Classes"],
+                ["modality", "split", "evaluation_scope", "shared_group", "shared_only", "count", "m2i_top1_mean", "m2i_top5_mean", "m2i_two_way_mean", "baseline_top1_pct_mean", "baseline_top5_pct_mean", "retrieval_dataset_size_mean", "number_of_classes_mean"],
             ),
             "",
             "## Conversion By Pair",
             "",
             markdown_table(
                 conversion_rows,
-                ["Source", "Src Sub", "Target", "Tgt Sub", "Split", "Shared", "Candidates", "Forward Top-1", "Forward Top-5", "Forward 2-way", "Forward Norm", "Reverse Top-1", "Reverse Top-5", "Reverse 2-way", "Reverse Norm"],
-                ["source_modality", "source_subject", "target_modality", "target_subject", "split", "shared_only", "candidate_count", "forward_top1", "forward_top5", "forward_two_way", "forward_normalized_two_way", "reverse_top1", "reverse_top5", "reverse_two_way", "reverse_normalized_two_way"],
+                ["Source", "Src Sub", "Target", "Tgt Sub", "Split", "Scope", "Group", "Shared", "Candidates", "Forward Top-1", "Forward Top-5", "Forward 2-way", "Forward Norm", "Reverse Top-1", "Reverse Top-5", "Reverse 2-way", "Reverse Norm"],
+                ["source_modality", "source_subject", "target_modality", "target_subject", "split", "evaluation_scope", "shared_group", "shared_only", "candidate_count", "forward_top1", "forward_top5", "forward_two_way", "forward_normalized_two_way", "reverse_top1", "reverse_top5", "reverse_two_way", "reverse_normalized_two_way"],
             ),
             "",
             "## Conversion Summary",
             "",
             markdown_table(
                 conversion_summary_rows,
-                ["Source", "Target", "Split", "Shared", "N", "Forward 2-way", "Forward Norm", "Reverse 2-way", "Reverse Norm"],
-                ["source_modality", "target_modality", "split", "shared_only", "count", "forward_two_way_mean", "forward_normalized_two_way_mean", "reverse_two_way_mean", "reverse_normalized_two_way_mean"],
+                ["Source", "Target", "Split", "Scope", "Group", "Shared", "N", "Forward 2-way", "Forward Norm", "Reverse 2-way", "Reverse Norm"],
+                ["source_modality", "target_modality", "split", "evaluation_scope", "shared_group", "shared_only", "count", "forward_two_way_mean", "forward_normalized_two_way_mean", "reverse_two_way_mean", "reverse_normalized_two_way_mean"],
             ),
             "",
         ]
@@ -356,13 +399,34 @@ def preferred_decoding_rows(summary_rows):
     return [preferred[key][1] for key in sorted(preferred)]
 
 
+def collect_retrieval_files(results_root):
+    files = []
+    retrieval_root = results_root / "retrieval"
+    if retrieval_root.exists():
+        files.extend(retrieval_root.rglob("evaluation_sub*.txt"))
+
+    for path in results_root.glob("*/evaluation_sub*.txt"):
+        if "retrieval" in path.parts or "summary" in path.parts:
+            continue
+        files.append(path)
+
+    return sorted(set(files))
+
+
+def collect_conversion_files(results_root):
+    conversion_root = results_root / "conversion"
+    if not conversion_root.exists():
+        return []
+    return sorted(path for path in conversion_root.rglob("*.txt") if path.is_file())
+
+
 def main(results_root, output_dir):
     results_root = Path(results_root)
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    retrieval_files = sorted(results_root.glob("*/evaluation_sub*.txt"))
-    conversion_files = sorted((results_root / "conversion").glob("*.txt"))
+    retrieval_files = collect_retrieval_files(results_root)
+    conversion_files = collect_conversion_files(results_root)
     eeg_summary_path = results_root / "eeg" / "evaluation_summary.txt"
 
     retrieval_rows = [parse_retrieval_file(path) for path in retrieval_files]
@@ -378,7 +442,7 @@ def main(results_root, output_dir):
 
     retrieval_summary_rows = summarize_group(
         retrieval_rows,
-        ["modality", "split", "shared_only"],
+        ["modality", "split", "evaluation_scope", "shared_group", "shared_only"],
         [
             "m2i_top1",
             "m2i_top5",
@@ -394,7 +458,7 @@ def main(results_root, output_dir):
     )
     conversion_summary_rows = summarize_group(
         conversion_rows,
-        ["source_modality", "target_modality", "split", "shared_only"],
+        ["source_modality", "target_modality", "split", "evaluation_scope", "shared_group", "shared_only"],
         [
             "forward_top1",
             "forward_top5",
@@ -418,6 +482,8 @@ def main(results_root, output_dir):
             "retrieval_dataset_size": round(row["retrieval_dataset_size_mean"], 4),
             "number_of_classes": round(row["number_of_classes_mean"], 4),
             "split": row["split"],
+            "evaluation_scope": row["evaluation_scope"],
+            "shared_group": row["shared_group"],
             "shared_only": row["shared_only"],
         }
         for row in preferred_decoding_rows(retrieval_summary_rows)
@@ -431,6 +497,8 @@ def main(results_root, output_dir):
                 "clip_2_way_decoding_accuracy": row["forward_two_way_mean"] / 100.0,
                 "normalized_clip_2_way_decoding_accuracy": row["forward_normalized_two_way_mean"],
                 "split": row["split"],
+                "evaluation_scope": row["evaluation_scope"],
+                "shared_group": row["shared_group"],
                 "shared_only": row["shared_only"],
                 "pair_count": row["count"],
             }
@@ -441,6 +509,8 @@ def main(results_root, output_dir):
                 "clip_2_way_decoding_accuracy": row["reverse_two_way_mean"] / 100.0,
                 "normalized_clip_2_way_decoding_accuracy": row["reverse_normalized_two_way_mean"],
                 "split": row["split"],
+                "evaluation_scope": row["evaluation_scope"],
+                "shared_group": row["shared_group"],
                 "shared_only": row["shared_only"],
                 "pair_count": row["count"],
             }
@@ -451,6 +521,8 @@ def main(results_root, output_dir):
         "modality",
         "subject",
         "split",
+        "evaluation_scope",
+        "shared_group",
         "shared_only",
         "candidate_count",
         "checkpoint",
@@ -470,6 +542,8 @@ def main(results_root, output_dir):
     retrieval_summary_fields = [
         "modality",
         "split",
+        "evaluation_scope",
+        "shared_group",
         "shared_only",
         "count",
         "m2i_top1_mean",
@@ -522,6 +596,8 @@ def main(results_root, output_dir):
         "target_modality",
         "target_subject",
         "split",
+        "evaluation_scope",
+        "shared_group",
         "shared_only",
         "candidate_count",
         "source_checkpoint",
@@ -545,6 +621,8 @@ def main(results_root, output_dir):
         "source_modality",
         "target_modality",
         "split",
+        "evaluation_scope",
+        "shared_group",
         "shared_only",
         "count",
         "forward_top1_mean",
@@ -592,6 +670,8 @@ def main(results_root, output_dir):
         "retrieval_dataset_size",
         "number_of_classes",
         "split",
+        "evaluation_scope",
+        "shared_group",
         "shared_only",
     ]
     write_csv(output_dir / "paper_decoding_table.csv", decoding_table_rows, decoding_table_fields)
@@ -601,6 +681,8 @@ def main(results_root, output_dir):
         "clip_2_way_decoding_accuracy",
         "normalized_clip_2_way_decoding_accuracy",
         "split",
+        "evaluation_scope",
+        "shared_group",
         "shared_only",
         "pair_count",
     ]

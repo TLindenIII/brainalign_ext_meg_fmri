@@ -1,8 +1,11 @@
 import argparse
-from pathlib import Path
-
 import torch
 
+from src.checkpoints import (
+    conversion_directory_name,
+    conversion_results_path,
+    evaluation_scope_for,
+)
 from src.eval_utils import (
     align_embedding_dicts,
     build_model,
@@ -42,6 +45,8 @@ def build_result_lines(
     target_subject,
     target_ckpt,
     split,
+    evaluation_scope,
+    shared_group,
     aligned_count,
     metrics,
 ):
@@ -54,6 +59,8 @@ def build_result_lines(
         f"Source checkpoint: {source_ckpt}",
         f"Target checkpoint: {target_ckpt}",
         f"Split: {split}",
+        f"Evaluation scope: {evaluation_scope}",
+        f"Shared group: {shared_group}",
         "Shared-only images: True",
         f"Aligned shared test images: {aligned_count}",
         "",
@@ -69,13 +76,26 @@ def build_result_lines(
     ]
 
 
-def write_result_lines(lines, source_modality, source_subject, target_modality, target_subject, split):
-    results_dir = Path("results") / "conversion"
-    results_dir.mkdir(parents=True, exist_ok=True)
-    out_path = (
-        results_dir
-        / f"{source_modality}_sub{source_subject:02d}_to_{target_modality}_sub{target_subject:02d}_{split}.txt"
+def write_result_lines(
+    lines,
+    source_modality,
+    source_subject,
+    target_modality,
+    target_subject,
+    split,
+    evaluation_scope,
+    shared_group,
+):
+    out_path = conversion_results_path(
+        source_modality,
+        source_subject,
+        target_modality,
+        target_subject,
+        split,
+        evaluation_scope,
+        shared_group,
     )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as handle:
         handle.write("\n".join(lines))
     return out_path
@@ -101,6 +121,7 @@ def main(
             inferred_manifest = default_intersection_manifest_path(config, [source_modality, target_modality])
         if inferred_manifest.exists():
             config.setdefault("data", {})["shared_manifest_path"] = str(inferred_manifest)
+    resolved_shared_manifest_path = config.get("data", {}).get("shared_manifest_path")
     device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
     print(
         f"Using device: {device} for conversion evaluation "
@@ -132,6 +153,16 @@ def main(
     target_embeddings = collect_modality_embeddings(target_model, target_loader, device)
     image_ids, source_matrix, target_matrix = align_embedding_dicts(source_embeddings, target_embeddings)
     metrics = compute_bidirectional_metrics(source_matrix, target_matrix)
+    evaluation_scope = (
+        evaluation_scope_for(shared_manifest_path=resolved_shared_manifest_path)
+        if resolved_shared_manifest_path
+        else "shared"
+    )
+    shared_group = (
+        conversion_directory_name(shared_manifest_path=resolved_shared_manifest_path)
+        if resolved_shared_manifest_path
+        else "none"
+    )
 
     lines = build_result_lines(
         source_modality,
@@ -141,6 +172,8 @@ def main(
         target_subject,
         target_ckpt,
         split,
+        evaluation_scope,
+        shared_group,
         len(image_ids),
         metrics,
     )
@@ -154,6 +187,8 @@ def main(
         target_modality,
         target_subject,
         split,
+        evaluation_scope,
+        shared_group,
     )
     print(f"Saved results to {out_path}")
 
