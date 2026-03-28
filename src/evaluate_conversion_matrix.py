@@ -3,7 +3,11 @@ from pathlib import Path
 
 import torch
 
-from src.checkpoints import resolve_existing_checkpoint_path
+from src.checkpoints import (
+    conversion_directory_name,
+    evaluation_scope_for,
+    resolve_existing_checkpoint_path,
+)
 from src.data.image_manifest import (
     default_conversion_pool_manifest_path,
     default_intersection_manifest_path,
@@ -147,6 +151,17 @@ def main(
     if resolved_shared_manifest_path:
         print(f"Shared manifest: {resolved_shared_manifest_path}")
 
+    evaluation_scope = (
+        evaluation_scope_for(shared_manifest_path=resolved_shared_manifest_path)
+        if resolved_shared_manifest_path
+        else "shared"
+    )
+    shared_group = (
+        conversion_directory_name(shared_manifest_path=resolved_shared_manifest_path)
+        if resolved_shared_manifest_path
+        else "none"
+    )
+
     source_cache = collect_subject_embeddings(
         config,
         source_modality,
@@ -186,6 +201,8 @@ def main(
                 target_subject,
                 target_record["checkpoint_path"],
                 split,
+                evaluation_scope,
+                shared_group,
                 len(image_ids),
                 metrics,
             )
@@ -196,6 +213,8 @@ def main(
                 target_modality,
                 target_subject,
                 split,
+                evaluation_scope,
+                shared_group,
             )
             pair_count += 1
             print(
