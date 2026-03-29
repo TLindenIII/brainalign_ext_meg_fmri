@@ -1,4 +1,4 @@
-neural_module,top1_accuracy,top5_accuracy,clip_2_way,baseline_accuracy_pct,baseline_top5_pct,retrieval_dataset_size,number_of_classes,split,shared_only
-EEG,12.95,39.35,90.569,0.5,2.5,200,200,test,False
-FMRI,33.3333,67.6667,93.8733,1.0,5.0,100,100,test,False
-MEG,8.0,25.125,82.9525,0.5,2.5,200,200,test,False
+neural_module,top1_accuracy,top5_accuracy,clip_2_way,baseline_accuracy_pct,baseline_top5_pct,retrieval_dataset_size,number_of_classes,split,evaluation_scope,shared_group,shared_only
+EEG,12.95,39.35,90.569,0.5,2.5,200,200,test,full,none,False
+FMRI,33.3333,67.6667,93.8733,1.0,5.0,100,100,test,full,none,False
+MEG,8.0,25.125,82.9525,0.5,2.5,200,200,test,full,none,False
