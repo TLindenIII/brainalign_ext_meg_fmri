@@ -217,42 +217,105 @@ def add_retrieval_baselines(rows):
 def build_retrieval_lookup(rows):
     lookup = {}
     for row in rows:
-        key = (row["modality"], row["subject"], row["split"], row["shared_only"])
+        key = (
+            row["modality"],
+            row["subject"],
+            row["split"],
+            row["evaluation_scope"],
+            row["shared_group"],
+            row["shared_only"],
+        )
         lookup[key] = row
     return lookup
 
 
-def lookup_retrieval_reference(lookup, modality, subject, split, shared_only=False):
-    exact = lookup.get((modality, subject, split, shared_only))
-    if exact is not None:
-        return exact
+def lookup_retrieval_reference(
+    lookup,
+    modality,
+    subject,
+    split,
+    evaluation_scope,
+    shared_group,
+    shared_only,
+):
+    split_candidates = [split]
+    if modality == "eeg" and split == "test":
+        split_candidates.append("test_200way")
 
-    if modality == "eeg":
-        legacy = lookup.get((modality, subject, "test_200way", shared_only))
-        if legacy is not None:
-            return legacy
-
+    for split_candidate in split_candidates:
+        exact = lookup.get(
+            (
+                modality,
+                subject,
+                split_candidate,
+                evaluation_scope,
+                shared_group,
+                shared_only,
+            )
+        )
+        if exact is not None:
+            return exact
     return None
 
 
 def add_conversion_normalization(rows, retrieval_lookup):
     for row in rows:
-        forward_ref = lookup_retrieval_reference(
+        forward_scope_ref = lookup_retrieval_reference(
             retrieval_lookup,
             row["target_modality"],
             row["target_subject"],
             row["split"],
-            False,
+            row["evaluation_scope"],
+            row["shared_group"],
+            row["shared_only"],
         )
-        reverse_ref = lookup_retrieval_reference(
+        reverse_scope_ref = lookup_retrieval_reference(
             retrieval_lookup,
             row["source_modality"],
             row["source_subject"],
             row["split"],
+            row["evaluation_scope"],
+            row["shared_group"],
+            row["shared_only"],
+        )
+        forward_full_ref = lookup_retrieval_reference(
+            retrieval_lookup,
+            row["target_modality"],
+            row["target_subject"],
+            row["split"],
+            "full",
+            "none",
             False,
         )
+        reverse_full_ref = lookup_retrieval_reference(
+            retrieval_lookup,
+            row["source_modality"],
+            row["source_subject"],
+            row["split"],
+            "full",
+            "none",
+            False,
+        )
+
+        forward_ref = forward_scope_ref or forward_full_ref
+        reverse_ref = reverse_scope_ref or reverse_full_ref
+
+        row["forward_reference_mode"] = "matched_scope" if forward_scope_ref else "full_fallback"
+        row["reverse_reference_mode"] = "matched_scope" if reverse_scope_ref else "full_fallback"
         row["forward_reference_two_way"] = forward_ref["m2i_two_way"] if forward_ref else float("nan")
         row["reverse_reference_two_way"] = reverse_ref["m2i_two_way"] if reverse_ref else float("nan")
+        row["forward_scope_reference_two_way"] = (
+            forward_scope_ref["m2i_two_way"] if forward_scope_ref else float("nan")
+        )
+        row["reverse_scope_reference_two_way"] = (
+            reverse_scope_ref["m2i_two_way"] if reverse_scope_ref else float("nan")
+        )
+        row["forward_full_reference_two_way"] = (
+            forward_full_ref["m2i_two_way"] if forward_full_ref else float("nan")
+        )
+        row["reverse_full_reference_two_way"] = (
+            reverse_full_ref["m2i_two_way"] if reverse_full_ref else float("nan")
+        )
         row["forward_normalized_two_way"] = (
             row["forward_two_way"] / row["forward_reference_two_way"]
             if forward_ref and forward_ref["m2i_two_way"] > 0
@@ -261,6 +324,16 @@ def add_conversion_normalization(rows, retrieval_lookup):
         row["reverse_normalized_two_way"] = (
             row["reverse_two_way"] / row["reverse_reference_two_way"]
             if reverse_ref and reverse_ref["m2i_two_way"] > 0
+            else float("nan")
+        )
+        row["forward_normalized_two_way_full"] = (
+            row["forward_two_way"] / row["forward_full_reference_two_way"]
+            if forward_full_ref and forward_full_ref["m2i_two_way"] > 0
+            else float("nan")
+        )
+        row["reverse_normalized_two_way_full"] = (
+            row["reverse_two_way"] / row["reverse_full_reference_two_way"]
+            if reverse_full_ref and reverse_full_ref["m2i_two_way"] > 0
             else float("nan")
         )
     return rows
@@ -336,6 +409,11 @@ def build_report(retrieval_rows, retrieval_summary_rows, conversion_rows, conver
         if has_legacy_eeg_rows
         else "Note: Retrieval rows come from the per-subject retrieval evaluator for all available modalities."
     )
+    conversion_note = (
+        "Note: Conversion normalization uses the matching retrieval scope/group when available "
+        "(pairwise shared conversions are normalized against pairwise shared retrieval, 3-way conversions against 3-way retrieval). "
+        "Full-retrieval normalization is still exported in the CSV outputs as a secondary reference."
+    )
 
     lines.extend(
         [
@@ -366,6 +444,8 @@ def build_report(retrieval_rows, retrieval_summary_rows, conversion_rows, conver
             ),
             "",
             "## Conversion Summary",
+            "",
+            conversion_note,
             "",
             markdown_table(
                 conversion_summary_rows,
@@ -464,10 +544,12 @@ def main(results_root, output_dir):
             "forward_top5",
             "forward_two_way",
             "forward_normalized_two_way",
+            "forward_normalized_two_way_full",
             "reverse_top1",
             "reverse_top5",
             "reverse_two_way",
             "reverse_normalized_two_way",
+            "reverse_normalized_two_way_full",
         ],
     )
 
@@ -496,6 +578,7 @@ def main(results_root, output_dir):
                 "conversion": f"{row['source_modality'].upper()} to {row['target_modality'].upper()}",
                 "clip_2_way_decoding_accuracy": row["forward_two_way_mean"] / 100.0,
                 "normalized_clip_2_way_decoding_accuracy": row["forward_normalized_two_way_mean"],
+                "normalized_clip_2_way_decoding_accuracy_full_reference": row["forward_normalized_two_way_full_mean"],
                 "split": row["split"],
                 "evaluation_scope": row["evaluation_scope"],
                 "shared_group": row["shared_group"],
@@ -508,6 +591,7 @@ def main(results_root, output_dir):
                 "conversion": f"{row['target_modality'].upper()} to {row['source_modality'].upper()}",
                 "clip_2_way_decoding_accuracy": row["reverse_two_way_mean"] / 100.0,
                 "normalized_clip_2_way_decoding_accuracy": row["reverse_normalized_two_way_mean"],
+                "normalized_clip_2_way_decoding_accuracy_full_reference": row["reverse_normalized_two_way_full_mean"],
                 "split": row["split"],
                 "evaluation_scope": row["evaluation_scope"],
                 "shared_group": row["shared_group"],
@@ -603,17 +687,25 @@ def main(results_root, output_dir):
         "source_checkpoint",
         "target_checkpoint",
         "forward_label",
+        "forward_reference_mode",
         "forward_reference_two_way",
+        "forward_scope_reference_two_way",
+        "forward_full_reference_two_way",
         "forward_top1",
         "forward_top5",
         "forward_two_way",
         "forward_normalized_two_way",
+        "forward_normalized_two_way_full",
         "reverse_label",
+        "reverse_reference_mode",
         "reverse_reference_two_way",
+        "reverse_scope_reference_two_way",
+        "reverse_full_reference_two_way",
         "reverse_top1",
         "reverse_top5",
         "reverse_two_way",
         "reverse_normalized_two_way",
+        "reverse_normalized_two_way_full",
     ]
     write_csv(output_dir / "conversion_by_pair.csv", conversion_rows, conversion_fields)
 
@@ -641,6 +733,10 @@ def main(results_root, output_dir):
         "forward_normalized_two_way_std",
         "forward_normalized_two_way_min",
         "forward_normalized_two_way_max",
+        "forward_normalized_two_way_full_mean",
+        "forward_normalized_two_way_full_std",
+        "forward_normalized_two_way_full_min",
+        "forward_normalized_two_way_full_max",
         "reverse_top1_mean",
         "reverse_top1_std",
         "reverse_top1_min",
@@ -657,6 +753,10 @@ def main(results_root, output_dir):
         "reverse_normalized_two_way_std",
         "reverse_normalized_two_way_min",
         "reverse_normalized_two_way_max",
+        "reverse_normalized_two_way_full_mean",
+        "reverse_normalized_two_way_full_std",
+        "reverse_normalized_two_way_full_min",
+        "reverse_normalized_two_way_full_max",
     ]
     write_csv(output_dir / "conversion_summary.csv", conversion_summary_rows, conversion_summary_fields)
 
@@ -680,6 +780,7 @@ def main(results_root, output_dir):
         "conversion",
         "clip_2_way_decoding_accuracy",
         "normalized_clip_2_way_decoding_accuracy",
+        "normalized_clip_2_way_decoding_accuracy_full_reference",
         "split",
         "evaluation_scope",
         "shared_group",
