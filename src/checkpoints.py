@@ -2,11 +2,41 @@ import re
 from pathlib import Path
 
 
+EXPERIMENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
 MEG_ARCH_PRIORITY = {
     "_temporalcnn": 0,
     "_attnpool": 1,
     "": 2,
 }
+
+
+def normalize_experiment_name(experiment_name=None):
+    if experiment_name is None:
+        return None
+    experiment_name = str(experiment_name).strip()
+    if not experiment_name:
+        return None
+    if not EXPERIMENT_NAME_PATTERN.match(experiment_name):
+        raise ValueError(
+            "Experiment names must start with a letter or number and only contain "
+            "letters, numbers, '.', '_', or '-'."
+        )
+    return experiment_name
+
+
+def checkpoint_root(experiment_name=None):
+    experiment_name = normalize_experiment_name(experiment_name)
+    if experiment_name is None:
+        return Path("checkpoints")
+    return Path("checkpoints") / "experiments" / experiment_name
+
+
+def results_root(experiment_name=None):
+    experiment_name = normalize_experiment_name(experiment_name)
+    if experiment_name is None:
+        return Path("results")
+    return Path("results") / "experiments" / experiment_name
 
 
 def conversion_manifest_slug(shared_manifest_path=None, modalities=None):
@@ -43,20 +73,20 @@ def evaluation_scope_for(shared_manifest_path=None, modalities=None):
     return "shared"
 
 
-def retrieval_results_dir(modality, evaluation_scope, shared_group="none"):
-    results_dir = Path("results") / "retrieval" / evaluation_scope
+def retrieval_results_dir(modality, evaluation_scope, shared_group="none", experiment_name=None):
+    results_dir = results_root(experiment_name) / "retrieval" / evaluation_scope
     if shared_group and shared_group != "none" and evaluation_scope != "full":
         results_dir = results_dir / shared_group
     return results_dir / modality
 
 
-def retrieval_results_path(modality, subject, split, evaluation_scope, shared_group="none"):
-    results_dir = retrieval_results_dir(modality, evaluation_scope, shared_group)
+def retrieval_results_path(modality, subject, split, evaluation_scope, shared_group="none", experiment_name=None):
+    results_dir = retrieval_results_dir(modality, evaluation_scope, shared_group, experiment_name=experiment_name)
     return results_dir / f"evaluation_sub{subject:02d}_{split}.txt"
 
 
-def conversion_results_dir(evaluation_scope, shared_group="none"):
-    results_dir = Path("results") / "conversion" / evaluation_scope
+def conversion_results_dir(evaluation_scope, shared_group="none", experiment_name=None):
+    results_dir = results_root(experiment_name) / "conversion" / evaluation_scope
     if shared_group and shared_group != "none":
         results_dir = results_dir / shared_group
     return results_dir
@@ -70,8 +100,9 @@ def conversion_results_path(
     split,
     evaluation_scope,
     shared_group="none",
+    experiment_name=None,
 ):
-    results_dir = conversion_results_dir(evaluation_scope, shared_group)
+    results_dir = conversion_results_dir(evaluation_scope, shared_group, experiment_name=experiment_name)
     return (
         results_dir
         / (
@@ -93,12 +124,12 @@ def checkpoint_stem_for(modality, subject, arch_variant="current"):
     return stem
 
 
-def checkpoint_dir(modality, shared_only=False, shared_manifest_path=None, modalities=None):
+def checkpoint_dir(modality, shared_only=False, shared_manifest_path=None, modalities=None, experiment_name=None):
     if not shared_only:
-        return Path("checkpoints") / modality
+        return checkpoint_root(experiment_name) / modality
 
     return (
-        Path("checkpoints")
+        checkpoint_root(experiment_name)
         / "conversion"
         / conversion_directory_name(
             shared_manifest_path=shared_manifest_path,
@@ -108,12 +139,20 @@ def checkpoint_dir(modality, shared_only=False, shared_manifest_path=None, modal
     )
 
 
-def checkpoint_paths_for(modality, subject, shared_only=False, shared_manifest_path=None, modalities=None):
+def checkpoint_paths_for(
+    modality,
+    subject,
+    shared_only=False,
+    shared_manifest_path=None,
+    modalities=None,
+    experiment_name=None,
+):
     save_dir = checkpoint_dir(
         modality,
         shared_only=shared_only,
         shared_manifest_path=shared_manifest_path,
         modalities=modalities,
+        experiment_name=experiment_name,
     )
     stem = checkpoint_stem_for(modality, subject)
     return {
@@ -131,6 +170,7 @@ def candidate_checkpoint_paths(
     shared_only=False,
     shared_manifest_path=None,
     modalities=None,
+    experiment_name=None,
 ):
     suffix = f"_{kind}.pt"
     candidates = []
@@ -141,19 +181,23 @@ def candidate_checkpoint_paths(
             shared_only=True,
             shared_manifest_path=shared_manifest_path,
             modalities=modalities,
+            experiment_name=experiment_name,
         )
         candidates.append(primary_dir / f"{checkpoint_stem_for(modality, subject)}{suffix}")
         if modality == "meg":
             candidates.append(primary_dir / f"{checkpoint_stem_for(modality, subject, arch_variant='attnpool')}{suffix}")
 
-        legacy_dir = Path("checkpoints") / modality
-        candidates.append(legacy_dir / f"{checkpoint_stem_for(modality, subject)}_shared{suffix}")
-        if modality == "meg":
-            candidates.append(
-                legacy_dir / f"{checkpoint_stem_for(modality, subject, arch_variant='attnpool')}_shared{suffix}"
-            )
+        # Legacy shared checkpoint fallback is only enabled for the base run.
+        # Experimental branches must resolve inside checkpoints/experiments/<name>/.
+        if normalize_experiment_name(experiment_name) is None:
+            legacy_dir = Path("checkpoints") / modality
+            candidates.append(legacy_dir / f"{checkpoint_stem_for(modality, subject)}_shared{suffix}")
+            if modality == "meg":
+                candidates.append(
+                    legacy_dir / f"{checkpoint_stem_for(modality, subject, arch_variant='attnpool')}_shared{suffix}"
+                )
     else:
-        primary_dir = checkpoint_dir(modality, shared_only=False)
+        primary_dir = checkpoint_dir(modality, shared_only=False, experiment_name=experiment_name)
         candidates.append(primary_dir / f"{checkpoint_stem_for(modality, subject)}{suffix}")
         if modality == "meg":
             candidates.append(primary_dir / f"{checkpoint_stem_for(modality, subject, arch_variant='attnpool')}{suffix}")
@@ -175,6 +219,7 @@ def resolve_existing_checkpoint_path(
     shared_only=False,
     shared_manifest_path=None,
     modalities=None,
+    experiment_name=None,
 ):
     candidates = candidate_checkpoint_paths(
         modality,
@@ -183,6 +228,7 @@ def resolve_existing_checkpoint_path(
         shared_only=shared_only,
         shared_manifest_path=shared_manifest_path,
         modalities=modalities,
+        experiment_name=experiment_name,
     )
     for candidate in candidates:
         if candidate.exists():
@@ -199,7 +245,13 @@ def checkpoint_filename_pattern(modality):
     )
 
 
-def discover_best_checkpoints(modality, shared_only=False, shared_manifest_path=None, modalities=None):
+def discover_best_checkpoints(
+    modality,
+    shared_only=False,
+    shared_manifest_path=None,
+    modalities=None,
+    experiment_name=None,
+):
     locations = []
     if shared_only:
         locations.append(
@@ -209,14 +261,16 @@ def discover_best_checkpoints(modality, shared_only=False, shared_manifest_path=
                     shared_only=True,
                     shared_manifest_path=shared_manifest_path,
                     modalities=modalities,
+                    experiment_name=experiment_name,
                 ),
                 False,
                 0,
             )
         )
-        locations.append((Path("checkpoints") / modality, True, 10))
+        if normalize_experiment_name(experiment_name) is None:
+            locations.append((Path("checkpoints") / modality, True, 10))
     else:
-        locations.append((checkpoint_dir(modality, shared_only=False), False, 0))
+        locations.append((checkpoint_dir(modality, shared_only=False, experiment_name=experiment_name), False, 0))
 
     pattern = checkpoint_filename_pattern(modality)
     selected = {}

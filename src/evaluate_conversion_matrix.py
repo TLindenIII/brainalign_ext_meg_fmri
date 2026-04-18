@@ -45,17 +45,25 @@ def parse_subject_spec(spec):
     return sorted(subjects)
 
 
-def default_checkpoint_path(modality, subject, shared_only=False, shared_manifest_path=None):
+def default_checkpoint_path(modality, subject, shared_only=False, shared_manifest_path=None, experiment_name=None):
     return resolve_existing_checkpoint_path(
         modality,
         subject,
         kind="best",
         shared_only=shared_only,
         shared_manifest_path=shared_manifest_path,
+        experiment_name=experiment_name,
     )
 
 
-def resolve_checkpoint_path(modality, subject, pattern=None, shared_only=False, shared_manifest_path=None):
+def resolve_checkpoint_path(
+    modality,
+    subject,
+    pattern=None,
+    shared_only=False,
+    shared_manifest_path=None,
+    experiment_name=None,
+):
     if pattern:
         return Path(pattern.format(subject=subject, subject02=f"{subject:02d}"))
     return default_checkpoint_path(
@@ -63,6 +71,7 @@ def resolve_checkpoint_path(modality, subject, pattern=None, shared_only=False, 
         subject,
         shared_only=shared_only,
         shared_manifest_path=shared_manifest_path,
+        experiment_name=experiment_name,
     )
 
 
@@ -75,6 +84,7 @@ def collect_subject_embeddings(
     shared_manifest_path,
     shared_checkpoints,
     device,
+    experiment_name=None,
 ):
     cached = {}
     for subject in subjects:
@@ -84,6 +94,7 @@ def collect_subject_embeddings(
             pattern=checkpoint_pattern,
             shared_only=shared_checkpoints,
             shared_manifest_path=shared_manifest_path,
+            experiment_name=experiment_name,
         )
         if not checkpoint_path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
@@ -125,6 +136,7 @@ def main(
     target_ckpt_pattern=None,
     source_shared_checkpoints=False,
     target_shared_checkpoints=False,
+    experiment_name=None,
 ):
     config = load_config(config_path)
     if shared_manifest_path:
@@ -171,6 +183,7 @@ def main(
         resolved_shared_manifest_path,
         source_shared_checkpoints,
         device,
+        experiment_name=experiment_name,
     )
     target_cache = collect_subject_embeddings(
         config,
@@ -181,6 +194,7 @@ def main(
         resolved_shared_manifest_path,
         target_shared_checkpoints,
         device,
+        experiment_name=experiment_name,
     )
 
     pair_count = 0
@@ -215,6 +229,7 @@ def main(
                 split,
                 evaluation_scope,
                 shared_group,
+                experiment_name=experiment_name,
             )
             pair_count += 1
             print(
@@ -273,6 +288,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Use the default shared-only checkpoint naming for the target modality",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment namespace for checkpoints and result files",
+    )
     args = parser.parse_args()
 
     main(
@@ -287,4 +308,5 @@ if __name__ == "__main__":
         target_ckpt_pattern=args.target_ckpt_pattern,
         source_shared_checkpoints=args.source_shared_checkpoints,
         target_shared_checkpoints=args.target_shared_checkpoints,
+        experiment_name=args.experiment_name,
     )

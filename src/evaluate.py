@@ -35,7 +35,16 @@ def evaluate(model, test_loader, clip_dict, device):
     return flat_metrics
 
 
-def main(config_path, modality, checkpoint_path, subject, split, shared_only, shared_manifest_path=None):
+def main(
+    config_path,
+    modality,
+    checkpoint_path,
+    subject,
+    split,
+    shared_only,
+    shared_manifest_path=None,
+    experiment_name=None,
+):
     config = load_config(config_path)
     if shared_manifest_path:
         config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
@@ -101,6 +110,7 @@ def main(config_path, modality, checkpoint_path, subject, split, shared_only, sh
         split,
         evaluation_scope,
         shared_group,
+        experiment_name=experiment_name,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as handle:
@@ -126,6 +136,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional manifest of image_ids to use when --shared-only is enabled",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment namespace under results/experiments/<name>/",
+    )
     args = parser.parse_args()
     main(
         args.config,
@@ -135,4 +151,5 @@ if __name__ == "__main__":
         args.split,
         args.shared_only,
         args.shared_manifest,
+        args.experiment_name,
     )

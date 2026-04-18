@@ -60,6 +60,14 @@ Checkpoint naming:
   - MEG<->fMRI MEG: `checkpoints/conversion/shared-meg-fmri/meg/meg_brainalign_sub01_temporalcnn_best.pt`
   - MEG<->fMRI fMRI: `checkpoints/conversion/shared-meg-fmri/fmri/fmri_brainalign_sub01_best.pt`
 
+Experimental checkpoint naming:
+
+- Pass `--experiment-name <name>` to keep a new method separate from the baseline runs.
+- Experimental checkpoints mirror the existing layout under `checkpoints/experiments/<name>/`.
+- Example shared conversion checkpoint:
+  - `checkpoints/experiments/brain-to-clip-v1/conversion/shared-eeg-meg/eeg/eeg_brainalign_sub01_best.pt`
+- Non-default training objectives, such as `--alignment-objective brain_to_clip`, require `--experiment-name` so baseline checkpoints cannot be overwritten accidentally.
+
 ### Evaluation scripts
 
 - `scripts/evaluate_retrieval.py`
@@ -75,6 +83,7 @@ Checkpoint naming:
   - For shared evaluation, defaults to the matching `conversion_pools` manifest when one exists.
   - Supports 2-modality shared suites and 3-modality shared suites on a single 3-way manifest.
   - Auto-discovers subjects from `*_best.pt` checkpoints.
+  - Pass `--experiment-name <name>` to evaluate checkpoints under `checkpoints/experiments/<name>/` and write outputs under `results/experiments/<name>/`.
 - `scripts/evaluate_eeg_table.py`
   - EEG-only summary table generator.
 - `scripts/summarize_results.py`
@@ -110,3 +119,5 @@ If neither a map nor the OSF image-path metadata is present, the manifest builde
 ## Runbook
 
 For the ordered training-PC workflow, see [scripts/RUNBOOK.Rmd](/Users/thomas/Documents/Projects/brainalign_ext_meg_fmri/scripts/RUNBOOK.Rmd).
+
+For the conversion-objective experiment plan, see [design/conversion_experiment_plan.md](/Users/thomas/Documents/Projects/brainalign_ext_meg_fmri/design/conversion_experiment_plan.md).

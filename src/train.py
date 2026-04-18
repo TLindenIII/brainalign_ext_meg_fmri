@@ -10,7 +10,7 @@ from pathlib import Path
 from src.models.contrastive_model import BrainAlignModel
 from src.models.fmri_model import fMRIAlignModel
 from src.models.meg_model import MEGAlignModel
-from src.models.loss import clip_loss
+from src.models.loss import alignment_loss
 from src.data.eeg_loader import THINGSEEG2Dataset
 from src.data.image_manifest import conversion_split_dir_from_config
 from src.data.meg_loader import THINGSMEGDataset
@@ -198,8 +198,15 @@ def train(
     resume_best=False,
     shared_only=False,
     shared_manifest_path=None,
+    experiment_name=None,
+    alignment_objective="symmetric",
 ):
     config = load_config(config_path)
+    if alignment_objective != "symmetric" and not experiment_name:
+        raise ValueError(
+            "Experimental alignment objectives require --experiment-name so existing "
+            "checkpoints/results cannot be overwritten by accident."
+        )
     if shared_manifest_path:
         config.setdefault("data", {})["shared_manifest_path"] = shared_manifest_path
     if shared_only and not config.get("data", {}).get("shared_manifest_path"):
@@ -210,7 +217,12 @@ def train(
         if shared_only
         else "full"
     )
-    print(f"Using device: {device} for modality {modality.upper()}, subject {subject:02d} ({scope_label})")
+    experiment_label = f", experiment={experiment_name}" if experiment_name else ""
+    print(
+        f"Using device: {device} for modality {modality.upper()}, subject {subject:02d} "
+        f"({scope_label}{experiment_label})"
+    )
+    print(f"Alignment objective: {alignment_objective}")
     
     # Setup data
     print("Initializing dataloader...")
@@ -298,6 +310,7 @@ def train(
         subject,
         shared_only=shared_only,
         shared_manifest_path=config["data"].get("shared_manifest_path"),
+        experiment_name=experiment_name,
     )
     save_dir = checkpoint_paths["save_dir"]
     save_dir.mkdir(parents=True, exist_ok=True)
@@ -357,7 +370,12 @@ def train(
             p_brain = model(x_brain)
             
             # Loss computation
-            loss = clip_loss(p_brain, y_clip, model.logit_scale.to(device))
+            loss = alignment_loss(
+                p_brain,
+                y_clip,
+                model.logit_scale.to(device),
+                objective=alignment_objective,
+            )
             
             # Safety guard: skip batch if loss is NaN (e.g. from corrupted/infinite inputs)
             if not torch.isfinite(loss):
@@ -398,6 +416,8 @@ def train(
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'best_val_metric': best_val_metric,
+                    'alignment_objective': alignment_objective,
+                    'experiment_name': experiment_name,
                 }, best_ckpt_path)
                 print(f"    New best validation metric ({current_metric:.2f}%)! Saved comprehensive statemap to {best_ckpt_path}")
             
@@ -410,6 +430,8 @@ def train(
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
             'best_val_metric': best_val_metric,
+            'alignment_objective': alignment_objective,
+            'experiment_name': experiment_name,
         }, latest_ckpt_path)
         
     print(f"Training completed. Best evaluation metric achieved: {best_val_metric:.2f}%")
@@ -433,6 +455,19 @@ if __name__ == "__main__":
         default=None,
         help="Optional manifest of image_ids to use when --shared-only is enabled",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment namespace under checkpoints/experiments/<name>/",
+    )
+    parser.add_argument(
+        "--alignment-objective",
+        type=str,
+        default="symmetric",
+        choices=["symmetric", "brain_to_clip"],
+        help="Contrastive objective. Non-symmetric objectives require --experiment-name.",
+    )
     args = parser.parse_args()
     
     train(
@@ -444,4 +479,6 @@ if __name__ == "__main__":
         args.resume_best,
         args.shared_only,
         args.shared_manifest,
+        args.experiment_name,
+        args.alignment_objective,
     )

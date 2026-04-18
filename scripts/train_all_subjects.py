@@ -59,6 +59,19 @@ def main():
         default=None,
         help="Shared image manifest required for conversion checkpoint training",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional namespace for experimental checkpoints under checkpoints/experiments/<name>/",
+    )
+    parser.add_argument(
+        "--alignment-objective",
+        type=str,
+        default="symmetric",
+        choices=["symmetric", "brain_to_clip"],
+        help="Contrastive objective. Non-symmetric objectives require --experiment-name.",
+    )
     args = parser.parse_args()
 
     if args.shared_only and not args.shared_manifest:
@@ -79,6 +92,7 @@ def main():
             subject,
             shared_only=args.shared_only,
             shared_manifest_path=args.shared_manifest,
+            experiment_name=args.experiment_name,
         )
         if checkpoint_paths["best"].exists() and not args.resume and not args.resume_best:
             print(f"Checkpoint already exists at {checkpoint_paths['best']}. Skipping subject {subject}.")
@@ -94,6 +108,8 @@ def main():
             resume_best=args.resume_best,
             shared_only=args.shared_only,
             shared_manifest_path=args.shared_manifest,
+            experiment_name=args.experiment_name,
+            alignment_objective=args.alignment_objective,
         )
         print(f"Finished training subject {subject}.")
         print("")

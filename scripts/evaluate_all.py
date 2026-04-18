@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from summarize_results import main as summarize_results_main
-from src.checkpoints import discover_best_checkpoints
+from src.checkpoints import discover_best_checkpoints, results_root as experiment_results_root
 from src.data.image_manifest import (
     default_conversion_pool_manifest_path,
     default_intersection_manifest_path,
@@ -47,9 +47,17 @@ def subject_spec(subjects):
     return ",".join(str(subject) for subject in subjects)
 
 
-def clean_results(modalities, split, remove_summary):
+def resolve_output_root(path_value):
+    path = Path(path_value)
+    if not path.is_absolute():
+        path = ROOT / path
+    return path
+
+
+def clean_results(modalities, split, remove_summary, results_root):
     removed = []
-    retrieval_root = ROOT / "results" / "retrieval"
+    results_root = resolve_output_root(results_root)
+    retrieval_root = results_root / "retrieval"
     if retrieval_root.exists():
         for path in retrieval_root.rglob(f"evaluation_sub*_{split}.txt"):
             if any(modality in path.parts for modality in modalities):
@@ -57,7 +65,7 @@ def clean_results(modalities, split, remove_summary):
                 removed.append(path)
 
     for modality in modalities:
-        modality_dir = ROOT / "results" / modality
+        modality_dir = results_root / modality
         if not modality_dir.exists():
             continue
         for path in modality_dir.glob(f"evaluation_sub*_{split}_*.txt"):
@@ -67,7 +75,7 @@ def clean_results(modalities, split, remove_summary):
             path.unlink()
             removed.append(path)
 
-    conversion_dir = ROOT / "results" / "conversion"
+    conversion_dir = results_root / "conversion"
     if conversion_dir.exists():
         conversion_pattern = re.compile(
             r"^(?P<source>[a-z]+)_sub\d+_to_(?P<target>[a-z]+)_sub\d+_"
@@ -88,7 +96,7 @@ def clean_results(modalities, split, remove_summary):
                 removed.append(path)
 
     if remove_summary:
-        summary_dir = ROOT / "results" / "summary"
+        summary_dir = results_root / "summary"
         if summary_dir.exists():
             for path in summary_dir.iterdir():
                 if path.is_file():
@@ -98,9 +106,13 @@ def clean_results(modalities, split, remove_summary):
     print(f"Removed {len(removed)} existing result files.")
 
 
-def run_full_retrieval(config_path, modalities, split):
+def run_full_retrieval(config_path, modalities, split, experiment_name=None):
     for modality in modalities:
-        checkpoints = discover_best_checkpoints(modality, shared_only=False)
+        checkpoints = discover_best_checkpoints(
+            modality,
+            shared_only=False,
+            experiment_name=experiment_name,
+        )
         if not checkpoints:
             print(f"Skipping full retrieval for {modality.upper()}: no full best checkpoints found.")
             continue
@@ -118,6 +130,7 @@ def run_full_retrieval(config_path, modalities, split):
                 split,
                 False,
                 None,
+                experiment_name,
             )
 
 
@@ -140,7 +153,7 @@ def resolve_shared_manifest(config_path, modalities, explicit_manifest):
     return None
 
 
-def run_shared_suite(config_path, modalities, split, shared_manifest):
+def run_shared_suite(config_path, modalities, split, shared_manifest, experiment_name=None):
     if len(modalities) < 2:
         print("Skipping shared retrieval/conversion: at least two modalities are required.")
         return
@@ -163,6 +176,7 @@ def run_shared_suite(config_path, modalities, split, shared_manifest):
             modality,
             shared_only=True,
             shared_manifest_path=str(manifest_path),
+            experiment_name=experiment_name,
         )
         if not checkpoints:
             missing_modalities.append(modality)
@@ -189,6 +203,7 @@ def run_shared_suite(config_path, modalities, split, shared_manifest):
                 split,
                 True,
                 str(manifest_path),
+                experiment_name,
             )
 
     for left_modality, right_modality in combinations(modalities, 2):
@@ -217,10 +232,13 @@ def run_shared_suite(config_path, modalities, split, shared_manifest):
             target_ckpt_pattern=None,
             source_shared_checkpoints=True,
             target_shared_checkpoints=True,
+            experiment_name=experiment_name,
         )
 
 
 def main():
+    default_results_root = "results"
+    default_summary_output_dir = "results/summary"
     parser = argparse.ArgumentParser(
         description="Run full retrieval, shared retrieval, shared conversion, and result summarization in one pass"
     )
@@ -261,31 +279,56 @@ def main():
     parser.add_argument(
         "--results-root",
         type=str,
-        default="results",
+        default=default_results_root,
         help="Root directory containing evaluation text files for summarization",
     )
     parser.add_argument(
         "--summary-output-dir",
         type=str,
-        default="results/summary",
+        default=default_summary_output_dir,
         help="Directory for combined summary outputs",
+    )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help=(
+            "Evaluate checkpoints under checkpoints/experiments/<name>/ and write "
+            "outputs under results/experiments/<name>/ unless output dirs are overridden."
+        ),
     )
     args = parser.parse_args()
 
     modalities = parse_modalities(args.modalities)
     print(f"Evaluation modalities: {', '.join(modality.upper() for modality in modalities)}")
 
+    results_root = args.results_root
+    summary_output_dir = args.summary_output_dir
+    if args.experiment_name and args.results_root == default_results_root:
+        results_root = str(experiment_results_root(args.experiment_name))
+    if args.experiment_name and args.summary_output_dir == default_summary_output_dir:
+        summary_output_dir = str(experiment_results_root(args.experiment_name) / "summary")
+    if args.experiment_name:
+        print(f"Experiment namespace: {args.experiment_name}")
+        print(f"Results root: {results_root}")
+
     if args.clean:
-        clean_results(modalities, args.split, remove_summary=not args.skip_summary)
+        clean_results(modalities, args.split, remove_summary=not args.skip_summary, results_root=results_root)
 
     if not args.skip_full_retrieval:
-        run_full_retrieval(args.config, modalities, args.split)
+        run_full_retrieval(args.config, modalities, args.split, experiment_name=args.experiment_name)
 
     if not args.skip_shared_suite:
-        run_shared_suite(args.config, modalities, args.split, args.shared_manifest)
+        run_shared_suite(
+            args.config,
+            modalities,
+            args.split,
+            args.shared_manifest,
+            experiment_name=args.experiment_name,
+        )
 
     if not args.skip_summary:
-        summarize_results_main(args.results_root, args.summary_output_dir)
+        summarize_results_main(results_root, summary_output_dir)
 
 
 if __name__ == "__main__":

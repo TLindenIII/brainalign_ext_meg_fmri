@@ -85,6 +85,7 @@ def write_result_lines(
     split,
     evaluation_scope,
     shared_group,
+    experiment_name=None,
 ):
     out_path = conversion_results_path(
         source_modality,
@@ -94,6 +95,7 @@ def write_result_lines(
         split,
         evaluation_scope,
         shared_group,
+        experiment_name=experiment_name,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as handle:
@@ -111,6 +113,7 @@ def main(
     target_subject,
     split,
     shared_manifest_path=None,
+    experiment_name=None,
 ):
     config = load_config(config_path)
     if shared_manifest_path:
@@ -189,6 +192,7 @@ def main(
         split,
         evaluation_scope,
         shared_group,
+        experiment_name=experiment_name,
     )
     print(f"Saved results to {out_path}")
 
@@ -209,6 +213,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional shared image manifest. Defaults to data/manifests/intersections/<modalities>.txt if present.",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment namespace under results/experiments/<name>/",
+    )
     args = parser.parse_args()
 
     main(
@@ -221,4 +231,5 @@ if __name__ == "__main__":
         args.target_subject,
         args.split,
         args.shared_manifest,
+        args.experiment_name,
     )

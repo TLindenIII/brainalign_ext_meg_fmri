@@ -27,6 +27,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional manifest of image_ids to use when --shared-only is enabled",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment namespace under results/experiments/<name>/",
+    )
     args = parser.parse_args()
     main(
         args.config,
@@ -36,4 +42,5 @@ if __name__ == "__main__":
         args.split,
         args.shared_only,
         args.shared_manifest,
+        args.experiment_name,
     )

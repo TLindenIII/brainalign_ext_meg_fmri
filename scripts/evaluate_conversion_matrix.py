@@ -58,6 +58,12 @@ if __name__ == "__main__":
         action="store_true",
         help="Use the default shared-only checkpoint naming for the target modality",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment namespace for checkpoints and result files",
+    )
     args = parser.parse_args()
 
     main(
@@ -72,4 +78,5 @@ if __name__ == "__main__":
         target_ckpt_pattern=args.target_ckpt_pattern,
         source_shared_checkpoints=args.source_shared_checkpoints,
         target_shared_checkpoints=args.target_shared_checkpoints,
+        experiment_name=args.experiment_name,
     )

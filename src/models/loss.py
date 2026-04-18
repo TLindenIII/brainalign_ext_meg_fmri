@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 
+
 def clip_loss(p_brain, y_clip, logit_scale):
     """
     Symmetric Contrastive Loss (InfoNCE) used by CLIP.
@@ -34,3 +35,25 @@ def clip_loss(p_brain, y_clip, logit_scale):
     
     # Symmetric average
     return (loss_b2i + loss_i2b) / 2
+
+
+def brain_to_clip_loss(p_brain, y_clip, logit_scale):
+    """
+    Asymmetric brain -> CLIP contrastive loss.
+
+    Use this for conversion experiments that should keep training pressure
+    focused on placing each modality embedding near the frozen CLIP targets,
+    without the reverse image -> brain retrieval term.
+    """
+    scale = logit_scale.exp()
+    logits = scale * p_brain @ y_clip.T
+    labels = torch.arange(p_brain.size(0), device=p_brain.device)
+    return F.cross_entropy(logits, labels)
+
+
+def alignment_loss(p_brain, y_clip, logit_scale, objective="symmetric"):
+    if objective == "symmetric":
+        return clip_loss(p_brain, y_clip, logit_scale)
+    if objective == "brain_to_clip":
+        return brain_to_clip_loss(p_brain, y_clip, logit_scale)
+    raise ValueError(f"Unsupported alignment objective: {objective}")

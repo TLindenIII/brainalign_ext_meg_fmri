@@ -25,6 +25,12 @@ if __name__ == "__main__":
         default=None,
         help="Optional shared image manifest",
     )
+    parser.add_argument(
+        "--experiment-name",
+        type=str,
+        default=None,
+        help="Optional experiment namespace under results/experiments/<name>/",
+    )
     args = parser.parse_args()
 
     main(
@@ -37,4 +43,5 @@ if __name__ == "__main__":
         args.target_subject,
         args.split,
         args.shared_manifest,
+        args.experiment_name,
     )
