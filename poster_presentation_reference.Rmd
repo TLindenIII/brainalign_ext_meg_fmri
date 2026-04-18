@@ -1,0 +1,208 @@
+---
+output: pdf_document
+---
+# Poster Presentation Reference
+
+## Core Message
+
+We train subject-specific encoders for EEG, MEG, and fMRI that map brain
+responses to the same 512-dimensional CLIP image space. Once each
+modality is aligned to this shared space, we can evaluate image
+retrieval within a modality and cross-modality conversion by directly
+comparing embeddings.
+
+Key distinction: there is no separate neural translation network for
+modality conversion. Conversion works because each modality encoder
+learns to place responses to the same image near the same CLIP-aligned
+point.
+
+## Model Architecture By Modality
+
+| Modality | Input | Encoder | Pooling / projection | Output |
+|---------------|---------------|---------------|---------------|---------------|
+| EEG | THINGS-EEG2 trials, currently 63 channels x 100 timepoints. | CBraMod / Criss-Cross Transformer backbone, loaded from pretrained weights when available. Inputs are resampled to 200 timepoints and treated as one patch. | Four pseudo-anatomical channel regions are averaged, passed through region-specific linear layers, and combined with learned softmax region weights. Then Linear -\> ReLU -\> Linear projects to CLIP size. | L2-normalized 512-D CLIP-space brain embedding. |
+| MEG | THINGS-MEG epochs, 271 sensors x time after crop/resample and channel-wise standardization. | Dedicated Temporal CNN, not CBraMod. First uses 1x1 sensor projection to 256 hidden channels, then depthwise temporal stem and four residual temporal blocks with dilations 1, 2, 4, and 8. | Learned attention over time pools the temporal features, then LayerNorm and Linear -\> GELU -\> Dropout -\> Linear. | L2-normalized 512-D CLIP-space brain embedding. |
+| fMRI | Single-trial ICA-beta voxel vectors. Top 15,000 highest-variance voxels are selected using train trials only, then z-scored with train statistics. | Bottleneck MLP: Linear(V, 2048) -\> LayerNorm -\> GELU -\> Dropout, then a residual 2048-D MLP block. | Final Linear(2048, 512). Dropout is 0.5 in the fMRI model. | L2-normalized 512-D CLIP-space brain embedding. |
+
+## Alignment Model
+
+The shared alignment target is frozen CLIP ViT-B/32 image embeddings.
+
+| Component | What to remember |
+|------------------------------------|------------------------------------|
+| CLIP target | Each stimulus image is encoded once with CLIP ViT-B/32 and cached as a normalized 512-D vector. |
+| Brain encoder | Each modality has its own subject-specific model that predicts a 512-D vector from brain data. |
+| Shared space | Brain predictions and CLIP image vectors are both L2-normalized, so dot product equals cosine similarity. |
+| Temperature | A learnable `logit_scale` starts from CLIP's standard temperature init, `tau = 0.07`. |
+| Loss | Symmetric CLIP / InfoNCE loss: brain-to-image and image-to-brain cross entropy over the batch, with matching pairs on the diagonal. |
+
+Useful phrase: "The alignment model is the combination of a
+modality-specific brain encoder, a shared CLIP target space,
+unit-normalized embeddings, and a symmetric contrastive loss."
+
+## Evaluation Terms
+
+### Retrieval
+
+Retrieval asks whether a brain embedding can identify the image that
+caused it.
+
+-   Repeated trials for the same `image_id` are averaged at evaluation
+    time.
+-   The averaged brain embedding is compared against all candidate CLIP
+    image embeddings.
+-   Top-1 means the correct image is ranked first.
+-   Top-5 means the correct image is anywhere in the five nearest
+    candidates.
+-   In these tables, "class" means exact `image_id`, not semantic
+    concept.
+
+### CLIP2 / CLIP 2-Way
+
+CLIP2 means CLIP 2-way: a pairwise ranking metric.
+
+-   For each true brain-image pair, compare the true similarity against
+    every mismatched candidate similarity.
+-   Score the fraction of pairwise comparisons where the true match
+    wins.
+-   Average across all images.
+-   Chance is about 50%, not 1 / candidate count, because it is a
+    two-choice comparison repeated over many distractors.
+-   This is useful when 200-way Top-1 is harsh but the correct item is
+    still generally ranked above distractors.
+
+### CLIP2 Normalized / CLIP 2-Way Normalized
+
+Normalized CLIP 2-way asks how much of the target modality's own
+decodability is preserved during conversion.
+
+-   `2-way / matched retrieval`: conversion CLIP 2-way divided by the
+    target modality's retrieval CLIP 2-way on the same shared pool.
+-   `2-way / native retrieval`: conversion CLIP 2-way divided by the
+    target modality's full native retrieval CLIP 2-way.
+-   Values near 1 mean conversion is close to the target modality's own
+    image-decoding ceiling under that reference.
+-   Matched retrieval is the fairest comparison for shared-pool
+    conversion because the shared-pool models can be weaker than full
+    native models.
+
+### 2-Way Conversion
+
+Conversion evaluates whether one modality's embedding can retrieve the
+matching embedding from another modality.
+
+-   Example: EEG -\> MEG compares each EEG test embedding to all MEG
+    test embeddings for the same shared images.
+-   The correct match is the MEG embedding with the same `image_id`.
+-   Forward and reverse directions are both reported because the
+    similarity matrix can be read either way.
+-   This is direct embedding-space comparison, not reconstruction of raw
+    MEG, fMRI, or EEG signals.
+
+## Training Protocol
+
+| Item | What we did |
+|------------------------------------|------------------------------------|
+| CLIP cache | Built a universal CLIP ViT-B/32 cache over the THINGS image manifests. CLIP features are frozen targets. |
+| Subject training | Trained separate checkpoints for each subject and modality. |
+| Objective | Symmetric contrastive loss between predicted brain embedding and cached CLIP image embedding. |
+| Optimizer | AdamW, learning rate 3e-4, weight decay 1e-3. |
+| Epochs | 60 epochs per modality by default. |
+| Batch sizes | EEG 32, MEG 32, fMRI 256. |
+| End-to-end training | EEG fine-tunes the pretrained CBraMod path end-to-end; MEG and fMRI train their modality-specific alignment models end-to-end. |
+| Checkpoint selection | Best checkpoint selected by validation MRR for the current config. |
+| Full retrieval models | Trained on each modality's native train/val split and evaluated on native test images. |
+| Conversion models | Trained separately with `--shared-only` on manifest-backed shared conversion pools. |
+| Conversion split | Concept holdout with 100 validation concepts and 200 test concepts; evaluation is exact-image retrieval. |
+
+## Data Splits To Remember
+
+| Benchmark | Candidate set | Important detail |
+|----------------------|----------------------------:|----------------------|
+| EEG full retrieval | 200-way | Official THINGS-EEG2 train/test release. Test images and concepts are novel. |
+| MEG full retrieval | 200-way | Fixed EEG-style held-out image split. Test images and concepts are novel. |
+| fMRI full retrieval | 100-way | Official THINGS-fMRI train/test split. Test images are novel, but concepts appear in train. |
+| Pairwise conversion | 200-way | Shared image pools are built from images train-eligible in both modalities. |
+| 3-way conversion | 200-way | Stricter shared pool across EEG, MEG, and fMRI. |
+
+Conversion pool sizes:
+
+| Pool | Trainable pool | Train split | Val split | Test split |
+|---------------|--------------:|--------------:|--------------:|--------------:|
+| EEG-MEG | 16,540 images / 1,654 concepts | 13,540 images / 1,354 concepts | 100 images / 100 concepts | 200 images / 200 concepts |
+| EEG-fMRI | 6,330 images / 633 concepts | 3,330 images / 333 concepts | 100 images / 100 concepts | 200 images / 200 concepts |
+| MEG-fMRI | 8,640 images / 720 concepts | 5,040 images / 420 concepts | 100 images / 100 concepts | 200 images / 200 concepts |
+| EEG-MEG-fMRI | 6,330 images / 633 concepts | 3,330 images / 333 concepts | 100 images / 100 concepts | 200 images / 200 concepts |
+
+## Main Results To Remember
+
+Native retrieval:
+
+| Modality | Candidate set |          Top-1 |           Top-5 |     CLIP 2-way |
+|----------|---------------|---------------:|----------------:|---------------:|
+| EEG      | 200-way       | 12.95 +/- 3.29 |  39.35 +/- 7.70 | 90.57 +/- 2.12 |
+| MEG      | 200-way       |  8.00 +/- 4.08 | 25.12 +/- 11.04 | 82.95 +/- 5.24 |
+| fMRI     | 100-way       | 33.33 +/- 6.60 |  67.67 +/- 5.44 | 93.87 +/- 1.43 |
+
+Pairwise conversion:
+
+| Shared pool | Direction | Top-1 | Top-5 | CLIP 2-way | 2-way / matched retrieval |
+|------------|------------|-----------:|-----------:|-----------:|-----------:|
+| EEG-fMRI | EEG -\> fMRI | 1.52 +/- 1.10 | 5.93 +/- 2.05 | 61.69 +/- 4.79 | 0.868 +/- 0.068 |
+| EEG-fMRI | fMRI -\> EEG | 1.27 +/- 0.92 | 5.95 +/- 2.52 | 61.58 +/- 4.92 | 0.901 +/- 0.072 |
+| EEG-MEG | EEG -\> MEG | 2.92 +/- 1.49 | 12.72 +/- 4.33 | 72.89 +/- 5.96 | 0.924 +/- 0.030 |
+| EEG-MEG | MEG -\> EEG | 3.19 +/- 1.73 | 12.60 +/- 4.91 | 73.41 +/- 5.77 | 0.842 +/- 0.064 |
+| MEG-fMRI | MEG -\> fMRI | 1.00 +/- 0.74 | 5.17 +/- 2.55 | 60.02 +/- 5.52 | 0.807 +/- 0.077 |
+| MEG-fMRI | fMRI -\> MEG | 1.21 +/- 0.90 | 6.29 +/- 3.31 | 60.27 +/- 5.77 | 0.925 +/- 0.045 |
+
+## Takeaways
+
+-   All three modalities decode visual identity above chance in CLIP
+    space.
+-   fMRI is strongest for native retrieval, likely because voxel
+    responses carry high spatial specificity for visual content.
+-   EEG and MEG have lower Top-1 than fMRI, but their CLIP 2-way scores
+    are high, showing that correct images are usually ranked above many
+    distractors.
+-   EEG-MEG conversion is the strongest pairwise result, which makes
+    sense because both are fast electrophysiological modalities.
+-   EEG-fMRI and MEG-fMRI conversion are harder, but still above chance
+    in 2-way terms.
+-   Low conversion Top-1 is not the whole story: 200-way chance is 0.5%,
+    and normalized CLIP 2-way shows conversion often preserves a large
+    fraction of matched-pool decodability.
+-   The 3-way shared pool is stricter, so raw conversion scores drop,
+    but it is the cleanest protocol for comparing all modalities on the
+    same images.
+
+## Why This Research Matters
+
+-   It tests whether different brain measurement technologies contain a
+    shared visual representational structure.
+-   It creates a common language for EEG, MEG, and fMRI by mapping all
+    of them into CLIP's semantic image space.
+-   It helps bridge modalities with different strengths: EEG/MEG have
+    high temporal resolution, while fMRI has stronger spatial
+    specificity.
+-   It can support cross-modal transfer, missing-modality prediction,
+    and multimodal brain decoding without requiring a new raw-signal
+    translator for every pair.
+-   It points toward reusable neural representation models that can
+    compare subjects, datasets, and recording technologies in a shared
+    embedding space.
+-   Longer term, this kind of alignment can contribute to brain-computer
+    interfaces, stimulus decoding, cognitive neuroscience benchmarks,
+    and multimodal neuroimaging tools.
+
+## Quick Answers For Poster Questions
+
+| Question | Short answer |
+|------------------------------------|------------------------------------|
+| What is being aligned? | Brain responses from EEG, MEG, and fMRI are aligned to frozen CLIP image embeddings. |
+| Why CLIP? | CLIP gives a strong semantic visual space, so image similarity is meaningful beyond pixel matching. |
+| Is conversion a separate model? | No. Conversion is direct retrieval between modality embeddings after each encoder is trained into the shared CLIP space. |
+| Why use CLIP 2-way? | It captures pairwise ranking quality and is less brittle than 200-way Top-1. Chance is about 50%. |
+| Why normalized 2-way? | It tells whether conversion is close to the target modality's own retrieval performance on the same benchmark. |
+| What is the main result? | Native decoding works for all modalities, and cross-modal conversion preserves meaningful image information, especially EEG-MEG. |
+| Biggest limitation? | Conversion depends on shared image pools and subject-specific training; raw Top-1 remains low for harder cross-modal pairs. |
+| Next step? | Stronger shared encoders, more subjects, better multimodal training objectives, and tests on unseen concepts or larger candidate sets. |
