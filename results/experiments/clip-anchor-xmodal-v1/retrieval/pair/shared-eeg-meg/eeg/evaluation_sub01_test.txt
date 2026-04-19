@@ -1,0 +1,17 @@
+--- Evaluation Results (EEG / subject 01) ---
+Checkpoint: checkpoints\experiments\clip-anchor-xmodal-v1\conversion\shared-eeg-meg\eeg\eeg_brainalign_sub01_best.pt
+Split: test
+Evaluation scope: pair
+Shared group: shared-eeg-meg
+Shared-only images: True
+Candidate images: 200
+
+Modality -> Image
+Top-1 Retrieval: 1.50%
+Top-5 Retrieval: 10.50%
+CLIP 2-Way:      74.40%
+
+Image -> Modality
+Top-1 Retrieval: 1.00%
+Top-5 Retrieval: 5.50%
+CLIP 2-Way:      62.55%
