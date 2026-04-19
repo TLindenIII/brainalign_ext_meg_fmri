@@ -36,6 +36,9 @@ This directory contains the user-facing entry points for data prep, training, an
 - `scripts/train_all_subjects.py`
 - `scripts/train_all_subjects.sh`
 - `scripts/train_all_subjects.ps1`
+- `scripts/train_paired_conversion.py`
+- `scripts/train_paired_conversion_matrix.py`
+- `scripts/train_joint_shared_pool.py`
 
 `scripts/train_all_subjects.py` is the primary multi-subject trainer. The shell and PowerShell scripts are thin wrappers around it.
 
@@ -67,6 +70,21 @@ Experimental checkpoint naming:
 - Example shared conversion checkpoint:
   - `checkpoints/experiments/brain-to-clip-v1/conversion/shared-eeg-meg/eeg/eeg_brainalign_sub01_best.pt`
 - Non-default training objectives, such as `--alignment-objective brain_to_clip`, require `--experiment-name` so baseline checkpoints cannot be overwritten accidentally.
+
+Experimental conversion trainers:
+
+- `scripts/train_paired_conversion.py`
+  - Trains two modality/subject encoders together on aligned same-image batches.
+  - Objective: CLIP anchor loss for each modality plus a cross-modal source-target contrastive term.
+  - Use for Experiment 2 one-subject tests.
+- `scripts/train_paired_conversion_matrix.py`
+  - Runs the paired trainer sequentially across multiple subject sets.
+  - Defaults to `--pairing zip` to avoid overwriting standard per-subject checkpoints.
+  - Use for Experiment 2 multi-subject tests.
+- `scripts/train_joint_shared_pool.py`
+  - Trains two or more modalities in one coordinated shared-pool loop.
+  - Objective: CLIP anchor loss for every modality plus all pairwise cross-modal contrastive terms.
+  - Use for Experiment 3 two-way or three-way shared-pool tests.
 
 ### Evaluation scripts
 

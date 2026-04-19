@@ -18,11 +18,11 @@ CLIP image embeddings are frozen. The reverse term does not move CLIP, but it do
 
 ## Experiment Summary
 
-| Experiment                                   | Status                    | What it tests                                                                                                                                   | Main change                                                                                |
-| -------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| 1. Asymmetric brain-to-CLIP                  | Implemented               | Whether removing the reverse image-to-brain term makes independently trained modality embeddings more compatible for conversion.                | Use `--alignment-objective brain_to_clip` with isolated experiment checkpoints.            |
-| 2. CLIP anchor plus cross-modal loss         | Proposed, not implemented | Whether conversion improves when same-image embeddings from two modalities are explicitly pulled together while still staying anchored to CLIP. | Add a paired-modality training loop and a cross-modal contrastive term.                    |
-| 3. Joint multi-modality shared-pool training | Proposed, not implemented | Whether training all modalities together on the same shared pool gives the most consistent conversion geometry.                                 | Train multiple modality encoders in one coordinated loop with CLIP and cross-modal losses. |
+| Experiment                                   | Status      | What it tests                                                                                                                                   | Main change                                                                                |
+| -------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 1. Asymmetric brain-to-CLIP                  | Implemented | Whether removing the reverse image-to-brain term makes independently trained modality embeddings more compatible for conversion.                | Use `--alignment-objective brain_to_clip` with isolated experiment checkpoints.            |
+| 2. CLIP anchor plus cross-modal loss         | Implemented | Whether conversion improves when same-image embeddings from two modalities are explicitly pulled together while still staying anchored to CLIP. | Use paired-modality training with a CLIP anchor and cross-modal contrastive term.          |
+| 3. Joint multi-modality shared-pool training | Implemented | Whether training all modalities together on the same shared pool gives the most consistent conversion geometry.                                 | Train multiple modality encoders in one coordinated loop with CLIP and cross-modal losses. |
 
 ## Experiment Isolation
 
@@ -76,13 +76,25 @@ Change these values for other pools:
 | MEG-fMRI  | `meg,fmri`     | `data/manifests/conversion_pools/fmri_meg.txt`     |
 | Three-way | `eeg,meg,fmri` | `data/manifests/conversion_pools/eeg_fmri_meg.txt` |
 
-Use the repo virtualenv when available:
+If your virtualenv is activated, use the normal module form:
 
-```bash
-PYTHON=.venv/bin/python
+```powershell
+python -m scripts.<script_name>
 ```
 
-If the virtualenv is not available, replace `$PYTHON` with the correct Python executable for the training machine.
+If the virtualenv is not activated, use the venv Python executable directly:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.<script_name>
+```
+
+On macOS/Linux, the same direct form is:
+
+```bash
+.venv/bin/python -m scripts.<script_name>
+```
+
+The examples below use PowerShell continuation backticks. In bash/zsh, replace each trailing backtick with `\`.
 
 ## Experiment 1: Asymmetric Brain-to-CLIP
 
@@ -141,25 +153,25 @@ python -m src.train `
 
 Train all EEG subjects for the EEG-MEG pool:
 
-```bash
-./scripts/train_all_subjects.sh \
-  --modality eeg \
-  --shared-only \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name brain-to-clip-v1 \
-  --alignment-objective brain_to_clip \
+```powershell
+python -m scripts.train_all_subjects `
+  --modality eeg `
+  --shared-only `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name brain-to-clip-v1 `
+  --alignment-objective brain_to_clip `
   --resume
 ```
 
 Train all MEG subjects for the same pool:
 
-```bash
-./scripts/train_all_subjects.sh \
-  --modality meg \
-  --shared-only \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name brain-to-clip-v1 \
-  --alignment-objective brain_to_clip \
+```powershell
+python -m scripts.train_all_subjects `
+  --modality meg `
+  --shared-only `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name brain-to-clip-v1 `
+  --alignment-objective brain_to_clip `
   --resume
 ```
 
@@ -205,17 +217,20 @@ results/experiments/brain-to-clip-v1/summary/
 
 ## Experiment 2: CLIP Anchor Plus Cross-Modal Loss
 
-This is not implemented yet.
-
-Suggested objective:
+Objective name:
 
 ```text
-loss = clip_alignment_loss(source, clip)
-     + clip_alignment_loss(target, clip)
-     + lambda_cross * cross_modal_loss(source, target)
+clip_anchor_xmodal
 ```
 
-The cross-modal term should compare embeddings for the same `image_id` across modalities. This likely needs a specialized paired-batch training script because the current trainer loads one modality at a time.
+Implemented objective:
+
+```text
+loss = mean_m clip_alignment_loss(modality_m, clip)
+     + lambda_cross * mean_pairs cross_modal_clip_loss(modality_i, modality_j)
+```
+
+The `clip_alignment_loss` defaults to `brain_to_clip`, so each modality is pulled toward the frozen CLIP embedding for the same image. The cross-modal term is a symmetric CLIP-style contrastive loss between source and target modality embeddings for aligned `image_id` batches.
 
 Expected checkpoint namespace:
 
@@ -227,70 +242,79 @@ Design note:
 
 - This is probably a stronger conversion objective than asymmetric CLIP-only training because it makes same-image cross-modal agreement explicit.
 - It should still retain CLIP anchoring so the embedding space remains interpretable and comparable to retrieval.
+- The paired trainer saves standard per-modality shared checkpoints, so existing experiment-aware evaluators can load the outputs without a new resolver.
 
 ### Training One Subject
 
-Target command shape after implementation:
+Train EEG subject 1 and MEG subject 1 together on the EEG-MEG shared pool:
 
-```bash
-$PYTHON scripts/train_paired_conversion.py \
-  --source-modality eeg \
-  --target-modality meg \
-  --source-subject 1 \
-  --target-subject 1 \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name clip-anchor-xmodal-v1 \
-  --alignment-objective clip_anchor_xmodal \
-  --lambda-cross 1.0 \
+```powershell
+python -m scripts.train_paired_conversion `
+  --source-modality eeg `
+  --target-modality meg `
+  --source-subject 1 `
+  --target-subject 1 `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name clip-anchor-xmodal-v1 `
+  --alignment-objective clip_anchor_xmodal `
+  --clip-objective brain_to_clip `
+  --lambda-cross 1.0 `
   --resume
 ```
 
-This command requires a future paired trainer that can load same-`image_id` batches from both modalities in the same optimization step.
+The trainer builds same-`image_id` batches from both modality datasets, computes the CLIP anchor terms, then computes the cross-modal source-target term in the same optimization step.
 
 ### Training All Subjects
 
-Target command shape after implementation:
+Train zip-aligned EEG-MEG subject sets. This example trains EEG 1 with MEG 1, EEG 2 with MEG 2, etc.
 
-```bash
-$PYTHON scripts/train_paired_conversion_matrix.py \
-  --source-modality eeg \
-  --target-modality meg \
-  --source-subjects 1-10 \
-  --target-subjects 1-4 \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name clip-anchor-xmodal-v1 \
-  --alignment-objective clip_anchor_xmodal \
-  --lambda-cross 1.0 \
+```powershell
+python -m scripts.train_paired_conversion_matrix `
+  --source-modality eeg `
+  --target-modality meg `
+  --source-subjects 1-4 `
+  --target-subjects 1-4 `
+  --pairing zip `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name clip-anchor-xmodal-v1 `
+  --alignment-objective clip_anchor_xmodal `
+  --clip-objective brain_to_clip `
+  --lambda-cross 1.0 `
   --resume
 ```
 
-Implementation note: this would train pair-specific checkpoints. If we instead want one checkpoint per subject per modality, the trainer must accumulate cross-modal batches across all compatible paired subjects without overwriting the same subject checkpoint.
+Safety note:
+
+- `--pairing zip` is the default because it preserves one checkpoint per modality/subject.
+- `--pairing product` is intentionally blocked unless `--allow-shared-checkpoint-overwrite` is provided. A Cartesian product would retrain the same subject checkpoint multiple times and the last pair would overwrite earlier pair-specific geometry.
 
 ### Evaluating Conversion
 
 Evaluation can reuse the current experiment-aware evaluator once the checkpoints are written under the standard experiment layout:
 
-```bash
-$PYTHON scripts/evaluate_all.py \
-  --modalities eeg,meg \
-  --skip-full-retrieval \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name clip-anchor-xmodal-v1 \
+```powershell
+python -m scripts.evaluate_all `
+  --modalities eeg,meg `
+  --skip-full-retrieval `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name clip-anchor-xmodal-v1 `
   --clean
 ```
 
-If the paired trainer writes pair-specific checkpoint names instead of the standard per-modality names, evaluation will need either `--source-ckpt-pattern` and `--target-ckpt-pattern` or a small resolver update.
-
 ## Experiment 3: Joint Multi-Modality Shared-Pool Training
 
-This is not implemented yet.
+Objective name:
 
-Suggested structure:
+```text
+joint_clip_xmodal
+```
+
+Implemented structure:
 
 - One training loop loads paired batches by `image_id` from all modalities in the shared pool.
 - Each modality keeps its own encoder.
 - The training step computes CLIP anchoring and all available cross-modal positives.
-- This can share temperature policy, validation logic, and early stopping across modalities.
+- Validation computes all pairwise cross-modal retrieval metrics across the jointly trained encoders.
 
 Expected checkpoint namespace:
 
@@ -301,41 +325,46 @@ Expected checkpoint namespace:
 Design note:
 
 - This is the cleanest way to train for conversion directly.
-- It is also the most invasive because it changes batching, validation, and checkpoint orchestration.
+- It is also the strictest shared-pool test because every modality encoder is updated from the same image batch geometry.
+- It writes standard per-modality shared checkpoints under the experiment namespace, keeping evaluation compatible with existing scripts.
 
 ### Training One Subject Set
 
-Target command shape after implementation for one aligned subject set:
+Train one explicit aligned subject set:
 
-```bash
-$PYTHON scripts/train_joint_shared_pool.py \
-  --modalities eeg,meg,fmri \
-  --subjects eeg:1,meg:1,fmri:1 \
-  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt \
-  --experiment-name joint-shared-pool-v1 \
-  --alignment-objective joint_clip_xmodal \
-  --lambda-cross 1.0 \
+```powershell
+python -m scripts.train_joint_shared_pool `
+  --modalities eeg,meg,fmri `
+  --subjects eeg:1,meg:1,fmri:1 `
+  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt `
+  --experiment-name joint-shared-pool-v1 `
+  --alignment-objective joint_clip_xmodal `
+  --clip-objective brain_to_clip `
+  --lambda-cross 1.0 `
   --resume
 ```
 
-Because subject counts differ by modality, this trainer should not assume subject IDs are naturally paired across EEG, MEG, and fMRI. The `--subjects` argument above is a proposed explicit mapping.
+Because subject counts differ by modality, this trainer does not assume subject IDs are naturally paired across EEG, MEG, and fMRI. The `--subjects` argument is the explicit mapping for one joint subject set.
 
 ### Training All Subjects
 
-Target command shape after implementation:
+Train all discoverable zip-aligned subject sets:
 
-```bash
-$PYTHON scripts/train_joint_shared_pool.py \
-  --modalities eeg,meg,fmri \
-  --all-subjects \
-  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt \
-  --experiment-name joint-shared-pool-v1 \
-  --alignment-objective joint_clip_xmodal \
-  --lambda-cross 1.0 \
+```powershell
+python -m scripts.train_joint_shared_pool `
+  --modalities eeg,meg,fmri `
+  --all-subjects `
+  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt `
+  --experiment-name joint-shared-pool-v1 `
+  --alignment-objective joint_clip_xmodal `
+  --clip-objective brain_to_clip `
+  --lambda-cross 1.0 `
   --resume
 ```
 
-Implementation note: this should probably save one checkpoint per modality/subject under:
+`--all-subjects` discovers local subjects per modality, sorts them, then trains zip-style sets by position. If counts differ, extra subjects from larger modalities are skipped instead of being trained into ambiguous checkpoints.
+
+The trainer saves one checkpoint per modality/subject under:
 
 ```text
 checkpoints/experiments/joint-shared-pool-v1/conversion/shared-eeg-fmri-meg/<modality>/
@@ -347,27 +376,27 @@ That keeps evaluation compatible with the existing shared-suite evaluator.
 
 Evaluate all pairwise conversions on the three-way shared pool:
 
-```bash
-$PYTHON scripts/evaluate_all.py \
-  --modalities eeg,meg,fmri \
-  --skip-full-retrieval \
-  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt \
-  --experiment-name joint-shared-pool-v1 \
+```powershell
+python -m scripts.evaluate_all `
+  --modalities eeg,meg,fmri `
+  --skip-full-retrieval `
+  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt `
+  --experiment-name joint-shared-pool-v1 `
   --clean
 ```
 
 Direct pairwise example after joint training:
 
-```bash
-$PYTHON scripts/evaluate_conversion_matrix.py \
-  --source-modality eeg \
-  --target-modality fmri \
-  --source-subjects 1-10 \
-  --target-subjects 1-3 \
-  --source-shared-checkpoints \
-  --target-shared-checkpoints \
-  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt \
-  --experiment-name joint-shared-pool-v1 \
+```powershell
+python -m scripts.evaluate_conversion_matrix `
+  --source-modality eeg `
+  --target-modality fmri `
+  --source-subjects 1-3 `
+  --target-subjects 1-3 `
+  --source-shared-checkpoints `
+  --target-shared-checkpoints `
+  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt `
+  --experiment-name joint-shared-pool-v1 `
   --split test
 ```
 
