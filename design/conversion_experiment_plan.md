@@ -18,11 +18,11 @@ CLIP image embeddings are frozen. The reverse term does not move CLIP, but it do
 
 ## Experiment Summary
 
-| Experiment | Status | What it tests | Main change |
-| --- | --- | --- | --- |
-| 1. Asymmetric brain-to-CLIP | Implemented | Whether removing the reverse image-to-brain term makes independently trained modality embeddings more compatible for conversion. | Use `--alignment-objective brain_to_clip` with isolated experiment checkpoints. |
-| 2. CLIP anchor plus cross-modal loss | Proposed, not implemented | Whether conversion improves when same-image embeddings from two modalities are explicitly pulled together while still staying anchored to CLIP. | Add a paired-modality training loop and a cross-modal contrastive term. |
-| 3. Joint multi-modality shared-pool training | Proposed, not implemented | Whether training all modalities together on the same shared pool gives the most consistent conversion geometry. | Train multiple modality encoders in one coordinated loop with CLIP and cross-modal losses. |
+| Experiment                                   | Status                    | What it tests                                                                                                                                   | Main change                                                                                |
+| -------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 1. Asymmetric brain-to-CLIP                  | Implemented               | Whether removing the reverse image-to-brain term makes independently trained modality embeddings more compatible for conversion.                | Use `--alignment-objective brain_to_clip` with isolated experiment checkpoints.            |
+| 2. CLIP anchor plus cross-modal loss         | Proposed, not implemented | Whether conversion improves when same-image embeddings from two modalities are explicitly pulled together while still staying anchored to CLIP. | Add a paired-modality training loop and a cross-modal contrastive term.                    |
+| 3. Joint multi-modality shared-pool training | Proposed, not implemented | Whether training all modalities together on the same shared pool gives the most consistent conversion geometry.                                 | Train multiple modality encoders in one coordinated loop with CLIP and cross-modal losses. |
 
 ## Experiment Isolation
 
@@ -69,11 +69,11 @@ Examples below use EEG-MEG first because it is the strongest current conversion 
 
 Change these values for other pools:
 
-| Pair | Modalities | Manifest |
-| --- | --- | --- |
-| EEG-MEG | `eeg,meg` | `data/manifests/conversion_pools/eeg_meg.txt` |
-| EEG-fMRI | `eeg,fmri` | `data/manifests/conversion_pools/eeg_fmri.txt` |
-| MEG-fMRI | `meg,fmri` | `data/manifests/conversion_pools/fmri_meg.txt` |
+| Pair      | Modalities     | Manifest                                           |
+| --------- | -------------- | -------------------------------------------------- |
+| EEG-MEG   | `eeg,meg`      | `data/manifests/conversion_pools/eeg_meg.txt`      |
+| EEG-fMRI  | `eeg,fmri`     | `data/manifests/conversion_pools/eeg_fmri.txt`     |
+| MEG-fMRI  | `meg,fmri`     | `data/manifests/conversion_pools/fmri_meg.txt`     |
 | Three-way | `eeg,meg,fmri` | `data/manifests/conversion_pools/eeg_fmri_meg.txt` |
 
 Use the repo virtualenv when available:
@@ -113,27 +113,27 @@ Safety rule:
 
 Train EEG subject 1 on the EEG-MEG shared pool:
 
-```bash
-$PYTHON -m src.train \
-  --modality eeg \
-  --subject 1 \
-  --shared-only \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name brain-to-clip-v1 \
-  --alignment-objective brain_to_clip \
+```powershell
+python -m src.train `
+  --modality eeg `
+  --subject 1 `
+  --shared-only `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name brain-to-clip-v1 `
+  --alignment-objective brain_to_clip `
   --resume
 ```
 
 Train MEG subject 1 on the same pool:
 
-```bash
-$PYTHON -m src.train \
-  --modality meg \
-  --subject 1 \
-  --shared-only \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name brain-to-clip-v1 \
-  --alignment-objective brain_to_clip \
+```powershell
+python -m src.train `
+  --modality meg `
+  --subject 1 `
+  --shared-only `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name brain-to-clip-v1 `
+  --alignment-objective brain_to_clip `
   --resume
 ```
 
@@ -178,16 +178,16 @@ $PYTHON scripts/evaluate_all.py \
 
 Direct conversion-matrix equivalent:
 
-```bash
-$PYTHON scripts/evaluate_conversion_matrix.py \
-  --source-modality eeg \
-  --target-modality meg \
-  --source-subjects 1-10 \
-  --target-subjects 1-4 \
-  --source-shared-checkpoints \
-  --target-shared-checkpoints \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name brain-to-clip-v1 \
+```powershell
+python -m scripts.evaluate_conversion_matrix `
+  --source-modality eeg `
+  --target-modality meg `
+  --source-subjects 1-10 `
+  --target-subjects 1-4 `
+  --source-shared-checkpoints `
+  --target-shared-checkpoints `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name brain-to-clip-v1 `
   --split test
 ```
 
