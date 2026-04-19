@@ -167,12 +167,12 @@ Train all MEG subjects for the same pool:
 
 Evaluate shared retrieval plus the full EEG-MEG conversion matrix for the experiment:
 
-```bash
-$PYTHON scripts/evaluate_all.py \
-  --modalities eeg,meg \
-  --skip-full-retrieval \
-  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
-  --experiment-name brain-to-clip-v1 \
+```powershell
+python -m scripts.evaluate_all `
+  --modalities eeg,meg `
+  --skip-full-retrieval `
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt `
+  --experiment-name brain-to-clip-v1 `
   --clean
 ```
 
