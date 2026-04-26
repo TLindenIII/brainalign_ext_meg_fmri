@@ -1,0 +1,18 @@
+--- Conversion Results (EEG sub-01 <-> MEG sub-03) ---
+Source checkpoint: checkpoints\experiments\joint-shared-pool-v1\conversion\shared-eeg-fmri-meg\eeg\eeg_brainalign_sub01_best.pt
+Target checkpoint: checkpoints\experiments\joint-shared-pool-v1\conversion\shared-eeg-fmri-meg\meg\meg_brainalign_sub03_temporalcnn_best.pt
+Split: test
+Evaluation scope: three_way
+Shared group: shared-eeg-fmri-meg
+Shared-only images: True
+Aligned shared test images: 200
+
+eeg_to_meg
+Top-1 Retrieval: 1.50%
+Top-5 Retrieval: 4.50%
+CLIP 2-Way:      58.75%
+
+meg_to_eeg
+Top-1 Retrieval: 1.00%
+Top-5 Retrieval: 6.00%
+CLIP 2-Way:      60.88%
