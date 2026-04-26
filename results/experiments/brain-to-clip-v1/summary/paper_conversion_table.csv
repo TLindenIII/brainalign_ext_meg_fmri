@@ -1,0 +1,3 @@
+conversion,clip_2_way_decoding_accuracy,normalized_clip_2_way_decoding_accuracy,normalized_clip_2_way_decoding_accuracy_full_reference,split,evaluation_scope,shared_group,shared_only,pair_count
+EEG to MEG,0.7267,0.943,nan,test,pair,shared-eeg-meg,True,40
+MEG to EEG,0.72733,0.8449,nan,test,pair,shared-eeg-meg,True,40

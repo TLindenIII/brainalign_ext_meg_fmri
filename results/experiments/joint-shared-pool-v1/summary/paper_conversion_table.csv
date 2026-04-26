@@ -1,0 +1,7 @@
+conversion,clip_2_way_decoding_accuracy,normalized_clip_2_way_decoding_accuracy,normalized_clip_2_way_decoding_accuracy_full_reference,split,evaluation_scope,shared_group,shared_only,pair_count
+EEG to FMRI,0.610933,0.8485,nan,test,three_way,shared-eeg-fmri-meg,True,9
+FMRI to EEG,0.619811,0.8864,nan,test,three_way,shared-eeg-fmri-meg,True,9
+EEG to MEG,0.602611,0.9208,nan,test,three_way,shared-eeg-fmri-meg,True,9
+MEG to EEG,0.6197,0.8864,nan,test,three_way,shared-eeg-fmri-meg,True,9
+MEG to FMRI,0.599656,0.8325,nan,test,three_way,shared-eeg-fmri-meg,True,9
+FMRI to MEG,0.5989439999999999,0.9199,nan,test,three_way,shared-eeg-fmri-meg,True,9

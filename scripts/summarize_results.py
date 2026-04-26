@@ -349,11 +349,23 @@ def write_csv(path, rows, fieldnames):
 
 
 def metric_summary(values):
+    finite_values = [
+        value for value in values
+        if not (isinstance(value, float) and math.isnan(value))
+    ]
+    if not finite_values:
+        return {
+            "mean": float("nan"),
+            "std": float("nan"),
+            "min": float("nan"),
+            "max": float("nan"),
+        }
+
     return {
-        "mean": mean(values),
-        "std": pstdev(values) if len(values) > 1 else 0.0,
-        "min": min(values),
-        "max": max(values),
+        "mean": mean(finite_values),
+        "std": pstdev(finite_values) if len(finite_values) > 1 else 0.0,
+        "min": min(finite_values),
+        "max": max(finite_values),
     }
 
 
