@@ -1,26 +1,25 @@
 ---
-title: "BrainAlign Runbook"
+title: "Execution Runbook"
 output: github_document
 ---
 
 # Purpose
 
-This runbook explains the order to run the consolidated scripts on the training PC.
+This runbook is the ordered operator guide for the tracked supplemental repo.
+Use it when you want the shortest correct path from a fresh checkout to
+manifests, checkpoints, evaluations, and summary tables.
 
-All user-facing shell / PowerShell / Python entry points now live in `scripts/`.
-The notebooks remain for exploratory analysis only.
+Use [README.md](README.md) for the fuller script reference. The split is
+intentional:
 
-The project now uses:
+- `scripts/README.md`: what each script does
+- `scripts/RUNBOOK.Rmd`: what order to run them in
 
-- one shared CLIP space across EEG, MEG, and fMRI
-- modality manifests for each native image set
-- pairwise and 3-way intersection manifests for conversion
+# Assumptions
 
-Current shared conversion workflow note:
-
-- shared training/evaluation should now use `data/manifests/conversion_pools/*.txt`
-- shared checkpoints now live under `checkpoints/conversion/shared-*/<modality>/`
-- when this runbook and the top-level README disagree, prefer the top-level README
+- Raw modality datasets already exist under the paths in `config.yaml`.
+- THINGS image metadata is available locally.
+- The generated CLIP cache is **not** tracked and must be built locally.
 
 # One-Time Setup
 
@@ -40,286 +39,173 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-The training scripts will auto-detect `.venv` first, then `venv`, then fall back to `python`.
+# Recommended Run Order
 
-# Optional Sanity Checks
-
-These are lightweight and safe to run before training:
+## 1. Build manifests
 
 ```bash
-./.venv/bin/python scripts/test_model.py
-./.venv/bin/python scripts/print_shapes.py
-./.venv/bin/python scripts/print_fmri_struct.py
-./.venv/bin/python scripts/test_meg_metadata.py
-./.venv/bin/python scripts/test_pd.py
-```
-
-Windows PowerShell equivalents:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/test_model.py
-.\.venv\Scripts\python.exe scripts/print_shapes.py
-.\.venv\Scripts\python.exe scripts/print_fmri_struct.py
-.\.venv\Scripts\python.exe scripts/test_meg_metadata.py
-.\.venv\Scripts\python.exe scripts/test_pd.py
-```
-
-# Required Data Contracts
-
-Before correct MEG training can start, the repo needs a THINGS image-number map at `data/things_image_map.tsv` or another path set in `config.yaml` under `data.things_image_map_path`.
-
-Required columns:
-
-- `image_number`
-- `image_id`
-
-Recommended:
-
-- `relative_path`
-
-If that file is missing but the repo contains `osfstorage-archive/01_image-level/image-paths.csv`, `scripts/build_image_manifests.py` will auto-generate `data/things_image_map.tsv`.
-
-If neither is present, `scripts/build_image_manifests.py` will write `data/manifests/things_image_map.template.tsv`. Populate it from your full THINGS metadata and rerun the manifest build step.
-
-If you want a universal CLIP cache across all modalities, point `data.things_image_root` in `config.yaml` at the full THINGS image root, or pass `--image-root` explicitly to `scripts/build_clip_cache.py`.
-
-# Recommended Run Order On The PC
-
-## 1. Build modality manifests
-
-Run this first to see whether the THINGS image map is present and to generate the modality manifests.
-
-```bash
-./.venv/bin/python scripts/build_image_manifests.py
+./.venv/bin/python scripts/build_image_manifests.py --config config.yaml
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\.venv\Scripts\python.exe scripts/build_image_manifests.py
+.\.venv\Scripts\python.exe scripts/build_image_manifests.py --config config.yaml
 ```
 
-Expected outputs:
+Expected outputs include:
 
 - `data/manifests/eeg_all.tsv`
 - `data/manifests/fmri_all.tsv`
 - `data/manifests/meg_numeric.tsv`
+- `data/manifests/meg_all.tsv` when the THINGS image map is available
+- pairwise and three-way conversion manifests under `data/manifests/conversion_pools/`
 
-If the THINGS image map is present, you will also get:
+If `data/things_image_map.tsv` is missing and cannot be auto-generated,
+populate the emitted template and rerun this step.
 
-- `data/manifests/meg_all.tsv`
-- `data/manifests/all_modalities_union.tsv`
-- `data/manifests/intersections/eeg_meg.txt`
-- `data/manifests/intersections/eeg_fmri.txt`
-- `data/manifests/intersections/fmri_meg.txt`
-- `data/manifests/intersections/eeg_fmri_meg.txt`
-
-If the map is missing, stop here, populate `data/things_image_map.tsv`, and rerun step 1.
-
-## 2. Refresh the legacy shared-image file if you still need it
-
-This is optional and mainly exists for compatibility with older workflows.
-
-```bash
-./.venv/bin/python scripts/build_shared_images.py
-```
-
-Windows PowerShell:
-
-```powershell
-.\.venv\Scripts\python.exe scripts/build_shared_images.py
-```
-
-If `data/manifests/intersections/fmri_meg.txt` exists, this keeps `data/shared_images.txt` in sync with it.
-
-## 3. Build the universal CLIP cache
-
-This is the key step that lets EEG, MEG, and fMRI all target the same CLIP space.
+## 2. Build the CLIP cache
 
 ```bash
 ./.venv/bin/python scripts/build_clip_cache.py \
+  --config config.yaml \
   --manifest data/manifests/all_modalities_union.tsv \
-  --image-root data/things-images
+  --image-root <THINGS image root>
 ```
 
 Windows PowerShell:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/build_clip_cache.py `
+  --config config.yaml `
   --manifest data/manifests/all_modalities_union.tsv `
-  --image-root data/things-images
+  --image-root <THINGS image root>
 ```
 
-If your full THINGS images live somewhere else, either pass that path to `--image-root` or update `data.things_image_root` in `config.yaml`.
+This writes `clip_cache/ViT-B-32.npz`, which all modalities share as the frozen
+target space.
 
-## 4. Train or resume full-data retrieval models
-
-These runs are for modality-to-image and image-to-modality retrieval.
-
-### MEG full-data retrieval
+## 3. Train baseline full-retrieval models
 
 ```bash
+./scripts/train_all_subjects.sh --modality eeg --resume
 ./scripts/train_all_subjects.sh --modality meg --resume
-```
-
-### fMRI full-data retrieval
-
-```bash
 ./scripts/train_all_subjects.sh --modality fmri --resume
 ```
 
 Windows PowerShell:
 
 ```powershell
-.\scripts\train_all_subjects.ps1 -Modality meg -Resume
-.\scripts\train_all_subjects.ps1 -Modality fmri -Resume
+.\scripts\train_all_subjects.ps1 --modality eeg --resume
+.\scripts\train_all_subjects.ps1 --modality meg --resume
+.\scripts\train_all_subjects.ps1 --modality fmri --resume
 ```
 
-The MEG checkpoints now use the `_temporalcnn` stem.
-
-## 5. Evaluate full-data retrieval models
-
-Run this after the full-data checkpoints exist.
-
-### MEG retrieval
-
-Example for subject 1:
+## 4. Evaluate baseline full retrieval
 
 ```bash
-./.venv/bin/python scripts/evaluate_retrieval.py \
-  --modality meg \
-  --subject 1 \
-  --ckpt checkpoints/meg/meg_brainalign_sub01_temporalcnn_best.pt \
-  --split test
+./.venv/bin/python -m scripts.evaluate_all \
+  --modalities eeg,meg,fmri \
+  --skip-shared-suite \
+  --clean
 ```
 
-### fMRI retrieval
+## 5. Train shared-pool baseline checkpoints
 
-Example for subject 3:
+Pairwise examples:
 
 ```bash
-./.venv/bin/python scripts/evaluate_retrieval.py \
-  --modality fmri \
-  --subject 3 \
-  --ckpt checkpoints/fmri/fmri_brainalign_sub03_best.pt \
-  --split test
+./scripts/train_all_subjects.sh --modality eeg --shared-only --shared-manifest data/manifests/conversion_pools/eeg_meg.txt --resume
+./scripts/train_all_subjects.sh --modality meg --shared-only --shared-manifest data/manifests/conversion_pools/eeg_meg.txt --resume
 ```
 
-Outputs are written under `results/meg/` and `results/fmri/`.
-
-Windows PowerShell uses the same arguments with `.\.venv\Scripts\python.exe`.
-
-## 6. Train or resume shared-only conversion models
-
-These runs are only for cross-modality conversion on the shared image intersection.
-
-Use explicit manifests for conversion experiments so the overlap is unambiguous. Examples:
-
-- `data/manifests/intersections/fmri_meg.txt`
-- `data/manifests/intersections/eeg_meg.txt`
-- `data/manifests/intersections/eeg_fmri.txt`
-- `data/manifests/intersections/eeg_fmri_meg.txt`
-
-### MEG shared-only conversion model
+Three-way example:
 
 ```bash
-./scripts/train_all_subjects.sh --modality meg --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --resume
+./scripts/train_all_subjects.sh --modality eeg --shared-only --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt --resume
+./scripts/train_all_subjects.sh --modality meg --shared-only --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt --resume
+./scripts/train_all_subjects.sh --modality fmri --shared-only --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt --resume
 ```
 
-### fMRI shared-only conversion model
+## 6. Evaluate shared retrieval and conversion
 
 ```bash
-./scripts/train_all_subjects.sh --modality fmri --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --resume
+./.venv/bin/python -m scripts.evaluate_all \
+  --modalities eeg,meg,fmri \
+  --skip-full-retrieval \
+  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt \
+  --clean
 ```
 
-Windows PowerShell:
+For pairwise evaluation, replace the manifest with the appropriate pair pool.
 
-```powershell
-.\scripts\train_all_subjects.ps1 -Modality meg -SharedOnly -SharedManifest data/manifests/intersections/fmri_meg.txt -Resume
-.\scripts\train_all_subjects.ps1 -Modality fmri -SharedOnly -SharedManifest data/manifests/intersections/fmri_meg.txt -Resume
-```
+## 7. Run experiment checkpoints under isolated namespaces
 
-Shared-only checkpoints are saved with `_shared` in the filename so they do not overwrite the full-data retrieval checkpoints.
+Experiment 1 and 2 use EEG/MEG pairwise pools. Experiment 3 uses the matched
+three-way pool.
 
-## 7. Evaluate shared-only retrieval models
-
-This is optional but useful to confirm the shared-subset models are healthy before conversion.
+Examples:
 
 ```bash
-./.venv/bin/python scripts/evaluate_retrieval.py \
-  --modality meg \
-  --subject 1 \
-  --shared-only \
-  --shared-manifest data/manifests/intersections/fmri_meg.txt \
-  --ckpt checkpoints/meg/meg_brainalign_sub01_temporalcnn_shared_best.pt \
-  --split test
-```
-
-```bash
-./.venv/bin/python scripts/evaluate_retrieval.py \
-  --modality fmri \
-  --subject 3 \
-  --shared-only \
-  --shared-manifest data/manifests/intersections/fmri_meg.txt \
-  --ckpt checkpoints/fmri/fmri_brainalign_sub03_shared_best.pt \
-  --split test
-```
-
-## 8. Run modality-conversion evaluation
-
-Once both shared-only checkpoints exist:
-
-```bash
-./.venv/bin/python scripts/evaluate_conversion.py \
-  --source-modality meg \
+./.venv/bin/python -m scripts.train_paired_conversion \
+  --source-modality eeg \
+  --target-modality meg \
   --source-subject 1 \
-  --source-ckpt checkpoints/meg/meg_brainalign_sub01_temporalcnn_shared_best.pt \
-  --target-modality fmri \
-  --target-subject 3 \
-  --target-ckpt checkpoints/fmri/fmri_brainalign_sub03_shared_best.pt \
-  --shared-manifest data/manifests/intersections/fmri_meg.txt \
-  --split test
+  --target-subject 1 \
+  --shared-manifest data/manifests/conversion_pools/eeg_meg.txt \
+  --experiment-name clip-anchor-xmodal-v1 \
+  --alignment-objective clip_anchor_xmodal \
+  --clip-objective brain_to_clip \
+  --lambda-cross 1.0 \
+  --resume
 ```
 
-This writes results under `results/conversion/`.
+```bash
+./.venv/bin/python -m scripts.train_joint_shared_pool \
+  --modalities eeg,meg,fmri \
+  --subjects eeg:1,meg:1,fmri:1 \
+  --shared-manifest data/manifests/conversion_pools/eeg_fmri_meg.txt \
+  --experiment-name joint-shared-pool-v1 \
+  --alignment-objective joint_clip_xmodal \
+  --clip-objective brain_to_clip \
+  --lambda-cross 1.0 \
+  --resume
+```
 
-For EEG conversion experiments, use the same command pattern with:
+## 8. Rebuild summaries
 
-- `data/manifests/intersections/eeg_meg.txt`
-- `data/manifests/intersections/eeg_fmri.txt`
-- `data/manifests/intersections/eeg_fmri_meg.txt`
+```bash
+./.venv/bin/python -m scripts.summarize_results \
+  --results-root results \
+  --output-dir results/summary
+```
 
-# Suggested PC Execution Order
+Experiment-specific example:
 
-Run these in this order:
+```bash
+./.venv/bin/python -m scripts.summarize_results \
+  --results-root results/experiments/joint-shared-pool-v1 \
+  --output-dir results/experiments/joint-shared-pool-v1/summary
+```
 
-1. `./.venv/bin/python scripts/test_model.py`
-2. `./.venv/bin/python scripts/print_shapes.py`
-3. `./.venv/bin/python scripts/build_image_manifests.py`
-4. Populate `data/things_image_map.tsv` if step 3 writes the template instead of the mapped manifests
-5. `./.venv/bin/python scripts/build_image_manifests.py` again after the map is in place
-6. `./.venv/bin/python scripts/build_clip_cache.py --manifest data/manifests/all_modalities_union.tsv --image-root data/things-images`
-7. `./scripts/train_all_subjects.sh --modality meg --resume`
-8. `./scripts/train_all_subjects.sh --modality fmri --resume`
-9. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --ckpt checkpoints/meg/meg_brainalign_sub<id>_temporalcnn_best.pt --split test`
-10. `./.venv/bin/python scripts/evaluate_retrieval.py --modality fmri --subject <id> --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_best.pt --split test`
-11. `./scripts/train_all_subjects.sh --modality meg --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --resume`
-12. `./scripts/train_all_subjects.sh --modality fmri --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --resume`
-13. `./.venv/bin/python scripts/evaluate_retrieval.py --modality meg --subject <id> --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --ckpt checkpoints/meg/meg_brainalign_sub<id>_temporalcnn_shared_best.pt --split test`
-14. `./.venv/bin/python scripts/evaluate_retrieval.py --modality fmri --subject <id> --shared-only --shared-manifest data/manifests/intersections/fmri_meg.txt --ckpt checkpoints/fmri/fmri_brainalign_sub<id>_shared_best.pt --split test`
-15. `./.venv/bin/python scripts/evaluate_conversion.py --source-modality meg --source-subject <meg_id> --source-ckpt checkpoints/meg/meg_brainalign_sub<meg_id>_temporalcnn_shared_best.pt --target-modality fmri --target-subject <fmri_id> --target-ckpt checkpoints/fmri/fmri_brainalign_sub<fmri_id>_shared_best.pt --shared-manifest data/manifests/intersections/fmri_meg.txt --split test`
+# Sanity Checks
 
-If the PC is running Windows PowerShell, replace steps 7, 8, 11, and 12 with:
+These are safe lightweight checks before a long run:
 
-1. `.\scripts\train_all_subjects.ps1 -Modality meg -Resume`
-2. `.\scripts\train_all_subjects.ps1 -Modality fmri -Resume`
-3. `.\scripts\train_all_subjects.ps1 -Modality meg -SharedOnly -SharedManifest data/manifests/intersections/fmri_meg.txt -Resume`
-4. `.\scripts\train_all_subjects.ps1 -Modality fmri -SharedOnly -SharedManifest data/manifests/intersections/fmri_meg.txt -Resume`
+```bash
+./.venv/bin/python scripts/test_model.py
+./.venv/bin/python scripts/print_shapes.py
+./.venv/bin/python scripts/print_fmri_struct.py
+./.venv/bin/python scripts/test_meg_metadata.py
+```
 
-# Notes
+# Outputs To Keep
 
-- EEG checkpoints are already present and can still be evaluated separately.
-- Full-data retrieval and shared-only conversion are intentionally separate workflows.
-- Pairwise conversion should use the corresponding pairwise manifest.
-- 3-way conversion should use `data/manifests/intersections/eeg_fmri_meg.txt`.
-- The conversion evaluator aggregates embeddings per `image_id` after aligning the requested shared manifest.
+For the supplemental repo, the important tracked outputs are:
+
+- `results/summary/`
+- `results/experiments/*/summary/`
+- any paper figures under `results/paper/`
+
+Do not rely on local-only files under `non_paper/` for a reproducible public
+workflow.

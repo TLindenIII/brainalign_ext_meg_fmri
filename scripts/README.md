@@ -1,6 +1,19 @@
 # Scripts Directory
 
-This directory contains the user-facing entry points for data prep, training, and evaluation. The project now uses one CLIP space across EEG, MEG, and fMRI, with manifest files controlling each modality's native image set and the pairwise or 3-way intersections used for conversion.
+> Maintained script reference for the tracked supplemental repo.
+
+This directory contains the user-facing entry points for data preparation,
+training, evaluation, and summarization.
+
+Use the documents in this order:
+
+- [../README.md](../README.md): repo-level overview
+- [RUNBOOK.Rmd](RUNBOOK.Rmd): ordered execution guide
+- `scripts/README.md`: script-by-script reference
+
+The project uses one frozen CLIP target space across EEG, MEG, and fMRI, with
+manifest files controlling each modality's native image set and the pairwise or
+three-way intersections used for conversion.
 
 ## Core Workflow
 
@@ -30,6 +43,7 @@ This directory contains the user-facing entry points for data prep, training, an
 - `scripts/build_clip_cache.py`
   - Preferred entry point for CLIP cache creation.
   - Use `--manifest data/manifests/all_modalities_union.tsv --image-root <THINGS root>` to build one cache for all modalities.
+  - The resulting `clip_cache/ViT-B-32.npz` is a generated local artifact and is not tracked in the supplemental repo.
 
 ### Training scripts
 
@@ -134,8 +148,11 @@ If neither a map nor the OSF image-path metadata is present, the manifest builde
 - `scripts/inspect_weights.py`
 - `scripts/patch_notebook.py`
 
-## Runbook
+## Why Both README And RUNBOOK Exist
 
-For the ordered training-PC workflow, see [scripts/RUNBOOK.Rmd](/Users/thomas/Documents/Projects/brainalign_ext_meg_fmri/scripts/RUNBOOK.Rmd).
+- `scripts/README.md` is the stable reference manual.
+- `scripts/RUNBOOK.Rmd` is the short operator guide for running the project in
+  the right order on a training machine.
 
-For the conversion-objective experiment plan, see [design/conversion_experiment_plan.md](/Users/thomas/Documents/Projects/brainalign_ext_meg_fmri/design/conversion_experiment_plan.md).
+This split is deliberate. The reference file should stay readable when the
+workflow grows, while the runbook should stay short and operational.

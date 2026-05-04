@@ -210,11 +210,18 @@ __marimo__/
 /data/
 /osfstorage-archive/
 
-# Un-ignore the globally ignored cache directory
-!clip_cache/
+# Generated CLIP feature cache
+/clip_cache/
 
 # Planning
 /planning/*
 
 # Ignore large binary files
 /checkpoints/
+/non_paper/
+
+# macOS and local scratch files
+.DS_Store
+.Rhistory
+/tmp/
+/tmp_eeg_encoding/

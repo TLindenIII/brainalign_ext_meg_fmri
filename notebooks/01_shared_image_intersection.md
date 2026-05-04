@@ -1,5 +1,7 @@
 # Shared Image Intersection Across Modalities
 
+> Status: historical notebook companion. This file is not maintained as canonical documentation. Use [../README.md](../README.md) for project status and [../scripts/README.md](../scripts/README.md) for current entry points.
+
 Hypothesis 3 focuses on cross-modal retrieval (MEG embeddings retrieving fMRI embeddings).
 To evaluate this modality conversion without trial-level pairing, we must evaluate at the **image level**.
 

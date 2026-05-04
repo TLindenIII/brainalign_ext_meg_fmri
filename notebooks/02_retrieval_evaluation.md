@@ -1,5 +1,7 @@
 # Zero-Shot Image Retrieval Evaluation
 
+> Status: historical notebook companion. This file is not maintained as canonical documentation. Use [../README.md](../README.md) for project status and [../scripts/README.md](../scripts/README.md) for current entry points.
+
 This notebook demonstrates how we evaluate the trained `BrainAlignModel`.
 The core metric of BrainAlign is "Zero-Shot Top-K Retrieval". 
 

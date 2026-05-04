@@ -1,5 +1,7 @@
 # Loader Scratchpad
 
+> Status: historical notebook companion. This file is not maintained as canonical documentation. Use [../README.md](../README.md) for project status and [../scripts/README.md](../scripts/README.md) for current entry points.
+
 In this notebook, we test our custom PyTorch `Dataset` loaders for EEG, MEG, and fMRI to ensure they return tensors with the correct shapes, the correct `image_id`, and a well-formed 512-dimensional CLIP embedding.
 
 

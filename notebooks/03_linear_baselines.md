@@ -1,5 +1,7 @@
 # Linear Baseline Prototyping
 
+> Status: historical notebook companion. This file is not maintained as canonical documentation. Use [../README.md](../README.md) for project status and [../scripts/README.md](../scripts/README.md) for current entry points.
+
 To validate that the deep contrastive `BrainAlignModel` is actually learning complex, non-linear representations, we must compare its zero-shot retrieval performance against a classic linear baseline.
 
 This notebook trains a simple **Ridge Regression** model from `scikit-learn` that attempts to map flattened brain matrices (e.g. EEG $17 \times 100$) directly to the 512D CLIP targets. We will evaluate its zero-shot retrieval accuracy.
