@@ -21,6 +21,27 @@ intentional:
 - THINGS image metadata is available locally.
 - The generated CLIP cache is **not** tracked and must be built locally.
 
+# Dataset Sources
+
+This runbook assumes you have already downloaded the required public datasets:
+
+- THINGS image database: `https://osf.io/jum2f/`
+- THINGS-EEG2: `https://osf.io/3jk45/`
+- THINGS-MEG: `https://openneuro.org/datasets/ds004212`
+- THINGS-fMRI: `https://openneuro.org/datasets/ds004192`
+
+Example acquisition commands:
+
+```bash
+pip install osfclient datalad
+osf -p jum2f clone THINGS-database
+osf -p 3jk45 clone THINGS-EEG2
+datalad clone https://github.com/OpenNeuroDatasets/ds004212.git data/things-meg-ds004212
+datalad clone https://github.com/OpenNeuroDatasets/ds004192.git data/things-fmri-ds004192
+```
+
+Then run `datalad get .` inside the OpenNeuro clones to fetch file contents.
+
 # One-Time Setup
 
 From the repo root:

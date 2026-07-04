@@ -218,7 +218,25 @@ __marimo__/
 
 # Ignore large binary files
 /checkpoints/
+/results/reproduced/
+/results/reproduced_if_figs/
+/results/paper/figures/fig_matched_experiment_conversion.pdf
+/results/paper/figures/fig_matched_experiment_conversion.png
+/results/paper/figures/fig_matched_experiment_conversion_data.csv
+/results/paper/figures/fig_matched_experiment_retrieval.pdf
+/results/paper/figures/fig_matched_experiment_retrieval.png
+/results/paper/figures/fig_matched_experiment_retrieval_data.csv
 /non_paper/
+/submission_assets/
+/submission_package/
+
+# Local submission-prep scripts
+/scripts/build_code_release_package.py
+/scripts/build_information_fusion_source_package.py
+/scripts/build_paper_source_package.py
+/scripts/build_submission_package.py
+/scripts/generate_matched_experiment_figures.py
+/scripts/reproduce_submission_artifacts.py
 
 # macOS and local scratch files
 .DS_Store

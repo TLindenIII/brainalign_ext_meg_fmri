@@ -35,6 +35,46 @@ Current maintained conclusions:
 - Experiment 2 adds explicit paired cross-modal pressure on EEG/MEG and is mixed.
 - Experiment 3 jointly trains EEG, MEG, and fMRI on the matched three-way pool and improves raw three-way conversion over the matched baseline in all six directions.
 
+## Dataset Acquisition
+
+This repo does not redistribute the raw datasets. You need local copies of:
+
+- **THINGS image database**: OSF project `jum2f`
+- **THINGS-EEG2**: OSF project `3jk45`
+- **THINGS-MEG**: OpenNeuro `ds004212`
+- **THINGS-fMRI**: OpenNeuro `ds004192`
+
+Recommended sources:
+
+- THINGS initiative dataset index: `https://things-initiative.org/`
+- THINGS image database (OSF): `https://osf.io/jum2f/`
+- THINGS-EEG2 (OSF): `https://osf.io/3jk45/`
+- THINGS-MEG (OpenNeuro): `https://openneuro.org/datasets/ds004212`
+- THINGS-fMRI (OpenNeuro): `https://openneuro.org/datasets/ds004192`
+
+Example commands:
+
+```bash
+pip install osfclient datalad
+
+# THINGS image database
+osf -p jum2f clone THINGS-database
+
+# THINGS-EEG2
+osf -p 3jk45 clone THINGS-EEG2
+
+# THINGS-MEG
+datalad clone https://github.com/OpenNeuroDatasets/ds004212.git data/things-meg-ds004212
+cd data/things-meg-ds004212 && datalad get .
+
+# THINGS-fMRI
+datalad clone https://github.com/OpenNeuroDatasets/ds004192.git data/things-fmri-ds004192
+cd data/things-fmri-ds004192 && datalad get .
+```
+
+After download, update `config.yaml` if your local paths differ from the default
+repo-relative layout.
+
 ## Quick Workflow
 
 Build manifests:
