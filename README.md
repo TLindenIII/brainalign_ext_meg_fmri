@@ -1,6 +1,6 @@
-# BrainAlign Extension on THINGS
+# BrainBridge
 
-This repository trains subject-specific EEG, MEG, and fMRI encoders into a shared frozen CLIP image space, then evaluates:
+BrainBridge trains subject-specific EEG, MEG, and fMRI encoders into a shared frozen CLIP image space, then evaluates:
 
 - modality-to-image retrieval
 - image-to-modality retrieval
